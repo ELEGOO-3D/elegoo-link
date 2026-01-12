@@ -1,0 +1,18 @@
+{
+  "dependencies": [
+    {
+        "name": "paho-mqttpp3",
+        "version>=": "1.5.2"
+    },
+    {
+      "name": "ixwebsocket",
+      "default-features": false,
+      "features": ["openssl"]
+    },
+    {
+      "name": "curl",
+      "version>=":"8.14.1"
+    },
+    "openssl"
+  ]
+}

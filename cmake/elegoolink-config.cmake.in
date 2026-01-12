@@ -1,0 +1,91 @@
+# elegoolink-config.cmake.in
+# Config file for the elegoolink package
+
+@PACKAGE_INIT@
+
+# Version information
+set(ELEGOOLINK_VERSION "@PROJECT_VERSION@")
+set(ELEGOOLINK_VERSION_MAJOR "@PROJECT_VERSION_MAJOR@")
+set(ELEGOOLINK_VERSION_MINOR "@PROJECT_VERSION_MINOR@")
+set(ELEGOOLINK_VERSION_PATCH "@PROJECT_VERSION_PATCH@")
+
+# Build configuration information
+set(ELEGOOLINK_BUILD_SHARED_LIBS "@BUILD_SHARED_LIBS@")
+
+# Include directory and library directory
+set_and_check(ELEGOOLINK_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(ELEGOOLINK_LIB_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
+set_and_check(ELEGOOLINK_BIN_DIR "@PACKAGE_CMAKE_INSTALL_BINDIR@")
+
+# Find required dependency packages
+include(CMakeFindDependencyMacro)
+
+# Required dependencies
+find_dependency(PahoMqttCpp REQUIRED)
+find_dependency(ixwebsocket REQUIRED)
+
+# Platform-specific dependency: OpenSSL is required on non-Windows systems
+if(ENABLE_CLOUD_FEATURES)
+    find_dependency(OpenSSL REQUIRED)
+    find_dependency(CURL REQUIRED)
+endif()
+
+# Import target file
+if(NOT TARGET elegoolink::elegoolink)
+    include("${CMAKE_CURRENT_LIST_DIR}/elegoolink_targets.cmake")
+endif()
+
+# Set library variables (for backward compatibility)
+if(TARGET elegoolink::elegoolink)
+    set(ELEGOOLINK_LIBRARIES elegoolink::elegoolink)
+    get_target_property(ELEGOOLINK_INCLUDE_DIRS elegoolink::elegoolink INTERFACE_INCLUDE_DIRECTORIES)
+    
+    # If it is a shared library, also set import definitions
+    if(ELEGOOLINK_BUILD_SHARED_LIBS)
+        set_target_properties(elegoolink::elegoolink PROPERTIES
+            INTERFACE_COMPILE_DEFINITIONS "ELEGOO_LINK_IMPORTS"
+        )
+    else()
+        set_target_properties(elegoolink::elegoolink PROPERTIES
+            INTERFACE_COMPILE_DEFINITIONS "ELEGOO_LINK_STATIC"
+        )
+    endif()
+endif()
+
+# Component check
+set(ELEGOOLINK_FOUND_COMPONENTS)
+
+# Check elegoolink library component
+if(TARGET elegoolink::elegoolink)
+    list(APPEND ELEGOOLINK_FOUND_COMPONENTS library)
+endif()
+
+# Component validation
+foreach(component ${elegoolink_FIND_COMPONENTS})
+    if(component STREQUAL "library")
+        if(NOT TARGET elegoolink::elegoolink)
+            set(elegoolink_FOUND FALSE)
+            set(elegoolink_NOT_FOUND_MESSAGE "elegoolink library component not found")
+            return()
+        endif()
+    else()
+        set(elegoolink_FOUND FALSE)
+        set(elegoolink_NOT_FOUND_MESSAGE "Unknown component: ${component}")
+        return()
+    endif()
+endforeach()
+
+# Set found flag
+set(elegoolink_FOUND TRUE)
+
+# Check if all required components are found
+check_required_components(elegoolink)
+
+# User information message
+if(NOT elegoolink_FIND_QUIETLY)
+    message(STATUS "Found elegoolink ${ELEGOOLINK_VERSION}")
+    message(STATUS "  Libraries: ${ELEGOOLINK_LIBRARIES}")
+    message(STATUS "  Include directories: ${ELEGOOLINK_INCLUDE_DIRS}")
+    message(STATUS "  Build type: ${ELEGOOLINK_BUILD_SHARED_LIBS}")
+    message(STATUS "  Found components: ${ELEGOOLINK_FOUND_COMPONENTS}")
+endif()

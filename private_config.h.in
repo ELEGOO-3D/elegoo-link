@@ -1,0 +1,5 @@
+#pragma once
+#define AGORA_APP_ID "@AGORA_APP_ID@"
+// for production use
+#define ELEGOO_CHINA_IOT_URL "https://matrix.elegoo.com.cn"
+#define ELEGOO_GLOBAL_IOT_URL "https://matrix.elegoo.com"

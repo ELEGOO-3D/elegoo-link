@@ -1,0 +1,9 @@
+build/
+.DS_Store
+CMakeUserPresets.json
+build-dll/
+.env
+.env.testing
+
+install/
+*.log

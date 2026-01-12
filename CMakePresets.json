@@ -1,0 +1,55 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "windows-vcpkg",
+      "displayName": "Windows VCPKG",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "CMAKE_GENERATOR_PLATFORM": "x64"
+      }
+    },
+    {
+      "name": "linux-vcpkg",
+      "displayName": "Linux VCPKG",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-static"
+      }
+    },
+    {
+      "name": "macos-vcpkg",
+      "displayName": "macOS VCPKG",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/build",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ]
+}
