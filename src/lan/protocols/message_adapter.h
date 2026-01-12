@@ -10,6 +10,8 @@
 #include "types/internal/internal.h"
 #include <mutex>
 #include <thread>
+#include <atomic>
+#include <condition_variable>
 namespace elink
 {
     template <typename T>

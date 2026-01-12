@@ -258,6 +258,13 @@ target_link_libraries(elegoolink PUBLIC
     OpenSSL::Crypto
 )
 
+# Link macOS system frameworks (required for utils.cpp getMachineId())
+if(APPLE)
+    target_link_libraries(elegoolink PUBLIC
+        "-framework CoreFoundation"
+        "-framework IOKit"
+    )
+endif()
 
 # Platform-specific Agora SDK linking (only if cloud service is enabled)
 if(ENABLE_CLOUD_FEATURES)
@@ -272,8 +279,6 @@ if(ENABLE_CLOUD_FEATURES)
         target_link_libraries(elegoolink PUBLIC
             ${AGORA_FRAMEWORK_PATH}
             ${AOSL_FRAMEWORK_PATH}
-            "-framework CoreFoundation"
-            "-framework IOKit"
         )
 
         # # Configure RPATH for dlopen scenarios
