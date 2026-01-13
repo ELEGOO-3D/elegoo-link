@@ -29,7 +29,7 @@ namespace elink
 
     VoidResult GenericMoonrakerPrinter::startPrint(const StartPrintParams &params)
     {
-        return executeRequest<std::monostate>(
+        executeRequest<std::monostate>(
             MethodType::START_PRINT,
             params,
             "Starting print",
