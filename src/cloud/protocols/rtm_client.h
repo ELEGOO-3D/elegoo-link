@@ -10,24 +10,8 @@
 #include "types/biz.h"
 #include <nlohmann/json.hpp>
 #include "IAgoraRtmClient.h"
-// Forward declaration of Agora RTM related types
-namespace agora
-{
-    namespace rtm
-    {
-        class IRtmClient;
-        class IRtmEventHandler;
-        // enum RTM_ERROR_CODE;
-        // enum RTM_CONNECTION_STATE;
-        // enum RTM_CONNECTION_CHANGE_REASON;
-        struct MessageEvent;
-        struct LinkStateEvent;
-        struct RtmConfig;
-        struct PublishOptions;
-        struct SubscribeOptions;
-    }
-}
-
+#include <set>
+#include <shared_mutex>
 namespace elink
 {
     /**
@@ -219,8 +203,20 @@ namespace elink
         VoidResult updateConfig(const RtmConfig &config);
 
     private:
-        class Impl;
-        std::unique_ptr<Impl> impl_;
+        void initialize();
+
+        void cleanup();
+
+    private:
+        mutable std::shared_mutex stateMutex_;
+
+        RtmConfig config_;
+        std::unique_ptr<class RtmEventHandler> eventHandler_;
+        agora::rtm::IRtmClient *rtmClient_;
+        std::atomic<bool> isLoggedIn_;
+        std::atomic<RtmConnectionState> connectionState_;
+        std::atomic<bool> isShutdown_;
+        std::set<std::string> subscribedChannels_;
     };
 
     /**
