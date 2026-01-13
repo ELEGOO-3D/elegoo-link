@@ -642,6 +642,7 @@ namespace elink
         const BizRequest &request,
         std::chrono::milliseconds timeout)
     {
+        ELEGOO_LOG_DEBUG("[{}] Request details: {}", printerInfo_.host, request.params.dump());
         // Use adapter to convert standard request to printer-specific format
         PrinterBizRequest printerBizRequest = adapter_->convertRequest(
             request.method, request.params, timeout);
