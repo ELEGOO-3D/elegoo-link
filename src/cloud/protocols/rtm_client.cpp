@@ -27,6 +27,20 @@ namespace elink
         RtmEventHandler() = default;
         virtual ~RtmEventHandler() = default;
 
+        void resetConnectionState()
+        {
+            std::lock_guard<std::mutex> lock(connectionMutex_);
+            currentConnectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
+            currentConnectionChangeReason_ = RTM_CONNECTION_CHANGE_REASON(0);
+            connectionCompleted_ = false;
+        }
+        void resetLoginState()
+        {
+            std::lock_guard<std::mutex> lock(loginMutex_);
+            loginCompleted_ = false;
+            pendingLoginRequestId_ = 0;
+            loginResult_ = VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Unknown error");
+        }
         // Set callback functions
         void setMessageCallback(const RtmMessageCallback &callback)
         {
@@ -78,8 +92,8 @@ namespace elink
         {
             std::unique_lock<std::mutex> lock(loginMutex_);
             pendingLoginRequestId_ = requestId;
-            loginCompleted_ = false;
-            loginResult_ = VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Unknown error");
+            // loginCompleted_ = false;
+            // loginResult_ = VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Unknown error");
 
             if (loginCondition_.wait_for(lock, std::chrono::seconds(timeoutSeconds), [this]
                                          { return loginCompleted_; }))
@@ -96,7 +110,7 @@ namespace elink
         bool waitForConnectionState(RTM_CONNECTION_STATE expectedState, int timeoutSeconds = 10)
         {
             std::unique_lock<std::mutex> lock(connectionMutex_);
-            connectionCompleted_ = false;
+            // connectionCompleted_ = false;
 
             if (connectionCondition_.wait_for(lock, std::chrono::seconds(timeoutSeconds),
                                               [this, expectedState]
@@ -483,6 +497,9 @@ namespace elink
                 {
                     return VoidResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "RTM client not initialized");
                 }
+
+                eventHandler_->resetLoginState();
+                eventHandler_->resetConnectionState();
 
                 client->login(loginToken.c_str(), requestId);
                 ELEGOO_LOG_DEBUG("[RTM] Login initiated for user: {}, requestId: {}", config_.userId, requestId);
