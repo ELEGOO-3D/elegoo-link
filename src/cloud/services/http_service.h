@@ -82,6 +82,19 @@ namespace elink
 
         VoidResult updatePrinterName(const UpdatePrinterNameParams &params);
 
+        /**
+         * Get list of devices with expired Agora license
+         * @return Result containing list of expired devices
+         */
+        GetLicenseExpiredDevicesResult getLicenseExpiredDevices();
+
+        /**
+         * Renew Agora license for a device
+         * @param params Renew parameters (serialNumber is required)
+         * @return Operation result
+         */
+        RenewLicenseResult renewLicense(const RenewLicenseParams &params);
+
         std::string buildUrlPath(const std::string &path);
 
     private:

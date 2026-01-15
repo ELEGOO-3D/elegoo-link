@@ -249,4 +249,33 @@ namespace elink
         std::string printerName;
     };
     using UpdatePrinterNameResult = VoidResult;
+
+    /**
+     * License expired device info
+     */
+    struct LicenseExpiredDevice
+    {
+        std::string serialNumber; // Device serial number
+        int status = 0;       // License status 1 VALID 2 EXPIRED 3 need to device confirm 9 not found
+    };
+
+    /**
+     * Get License expired device list data
+     */
+    struct GetLicenseExpiredDevicesData
+    {
+        std::vector<LicenseExpiredDevice> devices; // Expired device list
+    };
+
+    using GetLicenseExpiredDevicesResult = BizResult<GetLicenseExpiredDevicesData>;
+
+    /**
+     * Renew License request parameters
+     */
+    struct RenewLicenseParams
+    {
+        std::string serialNumber; // Device serial number
+    };
+
+    using RenewLicenseResult = VoidResult;
 } // namespace elink

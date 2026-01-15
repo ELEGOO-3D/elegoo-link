@@ -587,6 +587,28 @@ namespace elink
             "Cloud service is not enabled");
 #endif
     }
+
+    GetLicenseExpiredDevicesResult ElegooLink::getLicenseExpiredDevices()
+    {
+        if (!pImpl_->isInitialized())
+        {
+            return GetLicenseExpiredDevicesResult::Error(
+                ELINK_ERROR_CODE::NOT_INITIALIZED,
+                "ElegooLink is not initialized");
+        }
+        return getCloudService().getLicenseExpiredDevices();
+    }
+
+    RenewLicenseResult ElegooLink::renewLicense(const RenewLicenseParams &params)
+    {
+        if (!pImpl_->isInitialized())
+        {
+            return RenewLicenseResult::Error(
+                ELINK_ERROR_CODE::NOT_INITIALIZED,
+                "ElegooLink is not initialized");
+        }
+        return getCloudService().renewLicense(params);
+    }
 #endif // ENABLE_CLOUD_FEATURES
     // ========== File Management ==========
 

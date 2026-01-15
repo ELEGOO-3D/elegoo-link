@@ -2141,4 +2141,26 @@ namespace elink
         return ret;
     }
 
+    GetLicenseExpiredDevicesResult CloudService::getLicenseExpiredDevices()
+    {
+        std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+        auto validationResult = validateHttpServiceState();
+        if (!validationResult.isSuccess())
+        {
+            return GetLicenseExpiredDevicesResult::Error(validationResult.code, validationResult.message);
+        }
+        return m_httpService->getLicenseExpiredDevices();
+    }
+
+    RenewLicenseResult CloudService::renewLicense(const RenewLicenseParams &params)
+    {
+        std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+        auto validationResult = validateHttpServiceState();
+        if (!validationResult.isSuccess())
+        {
+            return RenewLicenseResult::Error(validationResult.code, validationResult.message);
+        }
+        return m_httpService->renewLicense(params);
+    }
+
 }

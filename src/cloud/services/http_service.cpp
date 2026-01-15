@@ -1946,4 +1946,121 @@ namespace elink
             return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to parse response");
         }
     }
+
+    GetLicenseExpiredDevicesResult HttpService::getLicenseExpiredDevices()
+    {
+        auto httpClient = getHttpClient();
+        if (!httpClient)
+        {
+            ELEGOO_LOG_WARN("HTTP client not initialized, cannot get license expired devices");
+            return GetLicenseExpiredDevicesResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP client not initialized");
+        }
+
+        BizResult<HttpResponse> result = httpClient->get(buildUrlPath("/api/v1/device-management-server/device/agora-license/list/expire"));
+        if (!result.isSuccess())
+        {
+            ELEGOO_LOG_ERROR("Failed to get license expired devices: {}", result.message);
+            return GetLicenseExpiredDevicesResult::Error(result.code, result.message);
+        }
+
+        const auto &response = result.value();
+        auto handleResult = handleResponse(response);
+        if (!handleResult.isSuccess())
+        {
+            return GetLicenseExpiredDevicesResult::Error(handleResult.code, handleResult.message);
+        }
+
+        try
+        {
+            nlohmann::json jsonResponse = nlohmann::json::parse(response.body);
+            int code = JsonUtils::safeGetInt(jsonResponse, "code", -1);
+
+            if (code == 0)
+            {
+                GetLicenseExpiredDevicesData data;
+                if (jsonResponse.contains("data") && jsonResponse["data"].is_array())
+                {
+                    for (const auto &item : jsonResponse["data"])
+                    {
+                        LicenseExpiredDevice device;
+                        device.serialNumber = JsonUtils::safeGetString(item, "serialNo", "");
+                        device.status = JsonUtils::safeGetInt(item, "status", 0);
+                        data.devices.push_back(device);
+                    }
+                }
+                return GetLicenseExpiredDevicesResult::Ok(std::move(data));
+            }
+            else
+            {
+                std::string msg = JsonUtils::safeGetString(jsonResponse, "msg", "Unknown error");
+                ELEGOO_LOG_ERROR("Failed to get license expired devices, code: {}, message: {}", code, msg);
+                return serverErrorToNetworkError(code);
+            }
+        }
+        catch (const std::exception &e)
+        {
+            ELEGOO_LOG_ERROR("Failed to parse license expired devices response: {}", e.what());
+            return GetLicenseExpiredDevicesResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to parse response");
+        }
+    }
+
+    RenewLicenseResult HttpService::renewLicense(const RenewLicenseParams &params)
+    {
+        auto httpClient = getHttpClient();
+        if (!httpClient)
+        {
+            ELEGOO_LOG_WARN("HTTP client not initialized, cannot renew license");
+            return RenewLicenseResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP client not initialized");
+        }
+
+        if (params.serialNumber.empty())
+        {
+            ELEGOO_LOG_ERROR("Serial number is required for license renewal");
+            return RenewLicenseResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Serial number is required");
+        }
+
+        try
+        {
+            nlohmann::json requestBody;
+            requestBody["serialNo"] = params.serialNumber;
+
+            BizResult<HttpResponse> result = httpClient->post(
+                buildUrlPath("/api/v1/device-management-server/device/agora-license/renew"),
+                requestBody.dump(),
+                {{"Content-Type", "application/json"}});
+
+            if (!result.isSuccess())
+            {
+                ELEGOO_LOG_ERROR("Failed to renew license: {}", result.message);
+                return RenewLicenseResult::Error(result.code, result.message);
+            }
+
+            const auto &response = result.value();
+            auto handleResult = handleResponse(response);
+            if (!handleResult.isSuccess())
+            {
+                return handleResult;
+            }
+
+            nlohmann::json jsonResponse = nlohmann::json::parse(response.body);
+            int code = JsonUtils::safeGetInt(jsonResponse, "code", -1);
+
+            if (code == 0)
+            {
+                ELEGOO_LOG_INFO("License renewed successfully for device: {}", params.serialNumber);
+                return RenewLicenseResult::Success();
+            }
+            else
+            {
+                std::string msg = JsonUtils::safeGetString(jsonResponse, "msg", "Unknown error");
+                ELEGOO_LOG_ERROR("Failed to renew license, code: {}, message: {}", code, msg);
+                return serverErrorToNetworkError(code);
+            }
+        }
+        catch (const std::exception &e)
+        {
+            ELEGOO_LOG_ERROR("Failed to renew license: {}", e.what());
+            return RenewLicenseResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to renew license");
+        }
+    }
 }
