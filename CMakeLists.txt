@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(elegoolink
-VERSION 1.0.0
+VERSION 1.0.1
     DESCRIPTION "Elegoo Link"
     LANGUAGES CXX
 )
