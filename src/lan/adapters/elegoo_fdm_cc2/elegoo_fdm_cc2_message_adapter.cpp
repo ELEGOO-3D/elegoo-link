@@ -609,7 +609,6 @@ namespace elink
                 // Full status update, cache original JSON data
                 cacheFullPrinterStatusJson(result);
                 finalResult = result;
-                ELEGOO_LOG_DEBUG("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
             }
             else
             {
@@ -1199,7 +1198,7 @@ namespace elink
         std::lock_guard<std::mutex> lock(statusCacheMutex_);
         cachedFullStatusJson_ = fullStatusResult;
         hasFullStatusCache_ = true;
-        ELEGOO_LOG_DEBUG("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
+        ELEGOO_LOG_TRACE("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
     }
 
     nlohmann::json ElegooFdmCC2MessageAdapter::mergeStatusUpdateJson(const nlohmann::json &deltaStatusResult)

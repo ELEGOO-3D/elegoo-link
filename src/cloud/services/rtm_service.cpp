@@ -714,8 +714,8 @@ namespace elink
                             BizEvent bizEvent;
                             bizEvent.method = data.method;
                             bizEvent.data = data.data.value();
-                            ELEGOO_LOG_DEBUG("Received event from printer {}: {}",
-                                             StringUtils::maskString(rtmEventData.printerId), bizEvent.data.dump());
+                            ELEGOO_LOG_DEBUG("Received event from printer {}, method={}",
+                                             StringUtils::maskString(rtmEventData.printerId), (int)data.method);
                             handleEventMessage(bizEvent);
                         }
                     }
