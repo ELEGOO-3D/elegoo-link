@@ -854,6 +854,11 @@ namespace elink
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Not logged in");
             }
+            
+            if(connectionState_ != RTM_CONNECTION_STATE_CONNECTED)
+            {
+                return VoidResult::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "RTM client not connected");
+            }
         }
 
         try

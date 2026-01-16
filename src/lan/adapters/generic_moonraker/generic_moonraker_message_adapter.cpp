@@ -384,12 +384,12 @@ namespace elink
         if (method == MethodType::GET_PRINTER_STATUS)
         {
             isFullStatusUpdate = true;
-            ELEGOO_LOG_DEBUG("Processing full printer status update");
+            ELEGOO_LOG_TRACE("Processing full printer status update");
         }
         else
         {
             isFullStatusUpdate = false;
-            ELEGOO_LOG_DEBUG("Processing delta printer status update");
+            ELEGOO_LOG_TRACE("Processing delta printer status update");
         }
 
         nlohmann::json statusJson;
@@ -428,7 +428,7 @@ namespace elink
                 // Full status update, cache original JSON data
                 cacheFullPrinterStatusJson(statusJson);
                 finalResult = statusJson;
-                ELEGOO_LOG_DEBUG("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
+                ELEGOO_LOG_TRACE("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
             }
             else
             {
@@ -439,7 +439,7 @@ namespace elink
                     return std::optional<PrinterStatusData>();
                 }
                 finalResult = mergeStatusUpdateJson(statusJson);
-                ELEGOO_LOG_DEBUG("Merged delta status JSON with cached full status for printer {}", StringUtils::maskString(printerInfo_.printerId));
+                ELEGOO_LOG_TRACE("Merged delta status JSON with cached full status for printer {}", StringUtils::maskString(printerInfo_.printerId));
             }
 
             // Parse print status info

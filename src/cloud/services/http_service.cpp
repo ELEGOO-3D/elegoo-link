@@ -2026,8 +2026,7 @@ namespace elink
 
             BizResult<HttpResponse> result = httpClient->post(
                 buildUrlPath("/api/v1/device-management-server/device/agora-license/renew"),
-                requestBody.dump(),
-                {{"Content-Type", "application/json"}});
+                requestBody);
 
             if (!result.isSuccess())
             {

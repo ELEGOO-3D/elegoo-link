@@ -343,6 +343,8 @@ namespace elink
                                                               
                                 // To ensure that the exception status is cleared in time, otherwise there may be a problem of continuously notifying the exception status
                                 // Deprecated temporary solution for clearing exception status notifications
+                                if(data.contains("machine_status") && data["machine_status"].is_object() &&
+                                   data["machine_status"].contains("exception_status"))
                                 {
                                     data["machine_status"] = {
                                         {"exception_status",std::vector<int>{} }
