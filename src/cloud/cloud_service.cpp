@@ -586,7 +586,7 @@ namespace elink
     {
         ELEGOO_LOG_INFO("Connection monitor task started");
 
-        constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 3;  // Refresh printer status every 3 cycles (30 seconds)
+        constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 1;  // Refresh printer status every 1 cycles (10 seconds)
         int printerStatusRefreshCounter = 0;
 
         while (m_backgroundTasksRunning.load())
@@ -607,7 +607,7 @@ namespace elink
                 refreshCredentials();
                 retryConnections();
                 
-                // Poll printer status every 3 cycles (30 seconds)
+                // Poll printer status every 1 cycles (10 seconds)
                 printerStatusRefreshCounter++;
                 if (printerStatusRefreshCounter >= PRINTER_STATUS_REFRESH_INTERVAL_COUNT)
                 {
@@ -631,7 +631,11 @@ namespace elink
                         
                         PrinterStatusParams params;
                         params.printerId = printerInfo.printerId;
-                        getPrinterStatusFromHttp(params);
+                        // getPrinterStatusFromHttp(params);
+                        BizRequest request;
+                        request.method = MethodType::GET_PRINTER_STATUS;
+                        request.params = params;
+                        m_rtmService->executeRequest<PrinterStatusData>(request, "GetPrinterStatus", std::chrono::milliseconds(1));
                     }
                 }
             }
