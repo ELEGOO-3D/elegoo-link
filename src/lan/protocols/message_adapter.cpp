@@ -89,7 +89,7 @@ namespace elink
 
         pendingRequests_[printerRequestId] = record;
 
-        ELEGOO_LOG_DEBUG("Recorded request mapping: {} -> {}", printerRequestId, standardMessageId);
+        ELEGOO_LOG_TRACE("Recorded request mapping: {} -> {}", printerRequestId, standardMessageId);
     }
 
     BaseMessageAdapter::RequestRecord BaseMessageAdapter::findRequestRecord(const std::string &printerResponseId) const

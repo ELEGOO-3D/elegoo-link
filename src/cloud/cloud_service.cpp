@@ -635,7 +635,7 @@ namespace elink
                         BizRequest request;
                         request.method = MethodType::GET_PRINTER_STATUS;
                         request.params = params;
-                        m_rtmService->executeRequest<PrinterStatusData>(request, "GetPrinterStatus", std::chrono::milliseconds(1));
+                        m_rtmService->executeRequest<PrinterStatusData>(request, "GetPrinterStatus", std::chrono::milliseconds(1000));
                     }
                 }
             }

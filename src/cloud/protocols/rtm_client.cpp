@@ -326,7 +326,7 @@ namespace elink
             }
             subscribeCondition_.notify_all();
 
-            ELEGOO_LOG_DEBUG("[RTM] Subscribe result for channel {}: {}", channelName ? channelName : "",
+            ELEGOO_LOG_TRACE("[RTM] Subscribe result for channel {}: {}", channelName ? channelName : "",
                              errorCode == RTM_ERROR_OK ? "Success" : "Failed");
         }
 
@@ -342,7 +342,7 @@ namespace elink
             }
             unsubscribeCondition_.notify_all();
 
-            ELEGOO_LOG_DEBUG("[RTM] Unsubscribe result for channel {}: {}", channelName ? channelName : "",
+            ELEGOO_LOG_TRACE("[RTM] Unsubscribe result for channel {}: {}", channelName ? channelName : "",
                              errorCode == RTM_ERROR_OK ? "Success" : "Failed");
         }
 
@@ -357,7 +357,7 @@ namespace elink
             }
             publishCondition_.notify_all();
 
-            ELEGOO_LOG_DEBUG("[RTM] Publish result: {}",
+            ELEGOO_LOG_TRACE("[RTM] Publish result: {}",
                              errorCode == RTM_ERROR_OK ? "Success" : "Failed");
         }
 
