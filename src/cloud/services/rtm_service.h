@@ -69,9 +69,12 @@ namespace elink
         BizResult<ResponseType> executeRequest(
             const BizRequest &request,
             const std::string &actionName,
-            std::chrono::milliseconds timeout = std::chrono::milliseconds(10000))
+            std::chrono::milliseconds timeout = std::chrono::milliseconds(10000), bool logRequest = true)
         {
-            ELEGOO_LOG_DEBUG("[RTM] Executing {}", actionName);
+            if (logRequest)
+            {
+                ELEGOO_LOG_DEBUG("[RTM] Executing {}", actionName);
+            }
             
             // Validate initialized state
             if (!m_initialized.load())
@@ -116,11 +119,17 @@ namespace elink
 
             if (response.code == ELINK_ERROR_CODE::SUCCESS)
             {
-                ELEGOO_LOG_INFO("{} operation completed successfully", actionName);
+                if (logRequest)
+                {
+                    ELEGOO_LOG_DEBUG("[RTM] {} succeeded",  actionName);
+                }
             }
             else
             {
-                ELEGOO_LOG_ERROR("Failed to {}: {}", actionName, response.message);
+                if (logRequest)
+                {
+                    ELEGOO_LOG_ERROR("[RTM] {} failed: {}", actionName, response.message);
+                }
             }
 
             return response;
