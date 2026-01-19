@@ -1511,7 +1511,7 @@ namespace elink
 
         // Get OSS bucket info
         {
-            BizResult<HttpResponse> result = httpClient->get(buildUrlPath("/api/v1/device-management-server/oss/biz-entrypoint?filename=" + UrlUtils::UrlEncode(fileName) + "&bucketAlias=iot-private&module=gcode&fileMd5=" + fileMd5));
+            BizResult<HttpResponse> result = httpClient->get(buildUrlPath("/api/v1/device-management-server/oss/biz-entrypoint?filename=" + UrlUtils::UrlEncode(fileName) + "&bucketAlias=iot-private&module=gcode&fileMd5=" + UrlUtils::UrlEncode(fileMd5)));
             if (!result.isSuccess())
             {
                 ELEGOO_LOG_ERROR("Failed to get file list: {}", result.message);
