@@ -1418,6 +1418,13 @@ namespace elink
                             resultJson[key] = subObject;
                         }
                     }
+
+                    // Ensure that the exception status is always returned as an empty array format to avoid repeated exception statuses
+                    // causing repeated notifications in the app
+                    if(resultJson.contains("machine_status") && resultJson["machine_status"].is_object()){
+                        resultJson["machine_status"]["exception_status"] = std::vector<int>{};
+                    }
+
                     return BizResult<nlohmann::json>::Ok(std::move(resultJson));
                 }
                 else

@@ -437,6 +437,7 @@ namespace elink
                                 {
                                     eventCallback(statusEvent);
                                 }
+                                if (eventCallback) 
                                 {
                                     BizEvent event;
                                     event.method = MethodType::ON_PRINTER_LIST_CHANGED;
