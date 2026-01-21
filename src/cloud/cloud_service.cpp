@@ -471,6 +471,11 @@ namespace elink
     {
         GetPrinterListResult result;
 
+        if(m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
+        {
+            return GetPrinterListResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized: Invalid HTTP credentials");
+        }
+
         // First get the printer list from HTTP service, without holding lock
         {
             std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
@@ -586,7 +591,7 @@ namespace elink
     {
         ELEGOO_LOG_INFO("Connection monitor task started");
 
-        constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 1;  // Refresh printer status every 1 cycles (10 seconds)
+        constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 2;  // Refresh printer status every 2 cycles (20 seconds)
         int printerStatusRefreshCounter = 0;
 
         while (m_backgroundTasksRunning.load())
@@ -607,7 +612,10 @@ namespace elink
                 refreshCredentials();
                 retryConnections();
                 
-                // Poll printer status every 1 cycles (10 seconds)
+                if(m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
+                {
+                    continue; // Skip further processing if unauthorized
+                }
                 printerStatusRefreshCounter++;
                 if (printerStatusRefreshCounter >= PRINTER_STATUS_REFRESH_INTERVAL_COUNT)
                 {
@@ -631,11 +639,11 @@ namespace elink
                         
                         PrinterStatusParams params;
                         params.printerId = printerInfo.printerId;
-                        // getPrinterStatusFromHttp(params);
-                        BizRequest request;
-                        request.method = MethodType::GET_PRINTER_STATUS;
-                        request.params = params;
-                        m_rtmService->executeRequest<PrinterStatusData>(request, "GetPrinterStatus", std::chrono::milliseconds(1000), false);
+                        getPrinterStatusFromHttp(params);
+                        // BizRequest request;
+                        // request.method = MethodType::GET_PRINTER_STATUS;
+                        // request.params = params;
+                        // m_rtmService->executeRequest<PrinterStatusData>(request, "GetPrinterStatus", std::chrono::milliseconds(1000), false);
                     }
                 }
             }
