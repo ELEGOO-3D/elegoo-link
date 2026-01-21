@@ -18,6 +18,7 @@ namespace elink
     BaseMessageAdapter::BaseMessageAdapter(const PrinterInfo &printerInfo)
         : printerInfo_(printerInfo), shouldStopCleanup_(false)
     {
+        printerAttributes_ = PrinterAttributesData(printerInfo);
         startCleanupTimer();
     }
 

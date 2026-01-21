@@ -14,6 +14,7 @@ namespace elink
         explicit ElegooFdmCC2Printer(const PrinterInfo &printerInfo);
         virtual ~ElegooFdmCC2Printer() = default;
 
+        virtual PrinterAttributesResult getPrinterAttributes(const PrinterAttributesParams &params, int timeout = 3000) override;
     protected:
         /**
          * Override: Perform CC2-specific initialization after connection

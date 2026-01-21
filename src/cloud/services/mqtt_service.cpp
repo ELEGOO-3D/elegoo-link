@@ -327,6 +327,20 @@ namespace elink
                                     eventCallback(event);
                                 }
 
+                                if(printerEvent.method == MethodType::ON_PRINTER_STATUS)
+                                {
+                                    if(adapter->isPrinterAttributesChanged())
+                                    {
+                                        // Update printer attributes cache
+                                        auto  attributes = adapter->getPrinterAttributes();
+                                        adapter->setPrinterAttributesChanged(false);
+                                        BizEvent bizEvent;
+                                        bizEvent.method = MethodType::ON_PRINTER_ATTRIBUTES;
+                                        bizEvent.data = attributes;
+                                        eventCallback(bizEvent);
+                                    }
+                                }
+
                                 {
                                     nlohmann::json sJson;
                                     sJson["id"] = 0;

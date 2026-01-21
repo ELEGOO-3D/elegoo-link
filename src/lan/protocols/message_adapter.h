@@ -141,6 +141,11 @@ namespace elink
         virtual nlohmann::json getCachedFullStatusJson() const = 0;
         virtual PrinterInfo getPrinterInfo() const = 0;
         virtual void clearStatusCache() = 0;
+        virtual bool hasFullStatusCache() const = 0;
+
+        virtual PrinterAttributesData getPrinterAttributes() const = 0;
+        virtual bool isPrinterAttributesChanged() const = 0;
+        virtual void setPrinterAttributesChanged(bool changed) = 0;
     };
 
     /**
@@ -180,8 +185,24 @@ namespace elink
             return printerInfo_;
         }
         virtual void clearStatusCache() override;
+
+        virtual bool hasFullStatusCache() const override{return false;}
+
+        virtual PrinterAttributesData getPrinterAttributes() const override{
+            return printerAttributes_;
+        }
+
+        virtual bool isPrinterAttributesChanged() const override{
+            return printerAttributesChanged_;
+        }
+
+        virtual void setPrinterAttributesChanged(bool changed) override{
+            printerAttributesChanged_ = changed;
+        }
     protected:
         mutable PrinterInfo printerInfo_;
+        mutable PrinterAttributesData printerAttributes_;
+        mutable bool printerAttributesChanged_ = false;
 
         // Request tracking structure
         struct RequestRecord

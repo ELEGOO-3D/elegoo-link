@@ -10,6 +10,36 @@ namespace elink
     {
     }
 
+    PrinterAttributesResult ElegooFdmCC2Printer::getPrinterAttributes(const PrinterAttributesParams &params, int timeout)
+    {
+        // Before getting printer attributes, ensure full status is available in LAN mode
+        // Since device attribute information relies on status information, ensure the status information is up-to-date in LAN mode
+        if (printerInfo_.networkMode != NetworkMode::CLOUD)
+        {
+            if (this->adapter_ != nullptr)
+            {
+                bool hasCache = adapter_->hasFullStatusCache();
+                if (!hasCache)
+                {
+                    ELEGOO_LOG_DEBUG("No full status cache available for printer {}, forcing refresh",
+                                     StringUtils::maskString(printerInfo_.printerId));
+                    auto printerStatusResult = BasePrinter::getPrinterStatus(GetCanvasStatusParams{printerInfo_.printerId}, timeout);
+                    if (!printerStatusResult.isSuccess())
+                    {
+                        return PrinterAttributesResult::Error(printerStatusResult.code,
+                                                              StringUtils::formatErrorMessage("Failed to refresh status before getting attributes", static_cast<int>(printerStatusResult.code)));
+                    }
+                }
+            }
+        }
+        PrinterAttributesResult result = BasePrinter::getPrinterAttributes(params, timeout);
+        if (result.isSuccess())
+        {
+            // Additional processing for CC2 printer attributes can be added here if needed
+        }
+        return result;
+    }
+
     std::unique_ptr<IProtocol> ElegooFdmCC2Printer::createProtocol()
     {
         return std::make_unique<ElegooCC2MqttProtocol>();
@@ -42,13 +72,13 @@ namespace elink
             if (elegooAdapter)
             {
                 elegooAdapter->resetStatusSequence();
-                ELEGOO_LOG_DEBUG("Reset status event sequence for ElegooFdmCC2 printer {}", 
-                               StringUtils::maskString(printerInfo_.printerId));
+                ELEGOO_LOG_DEBUG("Reset status event sequence for ElegooFdmCC2 printer {}",
+                                 StringUtils::maskString(printerInfo_.printerId));
             }
             else
             {
-                ELEGOO_LOG_WARN("Failed to cast adapter to ElegooFdmCC2MessageAdapter for printer {}", 
-                              StringUtils::maskString(printerInfo_.printerId));
+                ELEGOO_LOG_WARN("Failed to cast adapter to ElegooFdmCC2MessageAdapter for printer {}",
+                                StringUtils::maskString(printerInfo_.printerId));
             }
         }
     }

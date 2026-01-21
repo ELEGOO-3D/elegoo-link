@@ -68,6 +68,7 @@ namespace elink
             return cachedFullStatusJson_;
         }
         void clearStatusCache() override;
+        virtual bool hasFullStatusCache() const override{return hasFullStatusCache_;}
     private:
         // Command mapping related data - optimized unified management
         static const std::vector<std::pair<MethodType, int>> COMMAND_MAPPING_TABLE;

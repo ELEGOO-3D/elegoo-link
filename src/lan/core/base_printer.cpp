@@ -444,13 +444,29 @@ namespace elink
                     PrinterBizEvent data = adapter_->convertToEvent(messageData);
                     if (data.isValid())
                     {
-                        BizEvent bizEvent;
-                        bizEvent.method = data.method;
-                        bizEvent.data = data.data.value();
-                        ELEGOO_LOG_DEBUG("Received event from printer {}: {}",
-                                         StringUtils::maskString(printerInfo_.printerId),
-                                         bizEvent.data.dump());
-                        handleEventMessage(bizEvent);
+                        {
+                            BizEvent bizEvent;
+                            bizEvent.method = data.method;
+                            bizEvent.data = data.data.value();
+                            ELEGOO_LOG_DEBUG("Received event from printer {}: {}",
+                                            StringUtils::maskString(printerInfo_.printerId),
+                                            bizEvent.data.dump());
+                            handleEventMessage(bizEvent);
+                        }
+
+                        if(data.method == MethodType::ON_PRINTER_STATUS)
+                        {
+                            if(adapter_->isPrinterAttributesChanged())
+                            {
+                                // Update printer attributes cache
+                                auto  attributes = adapter_->getPrinterAttributes();
+                                adapter_->setPrinterAttributesChanged(false);
+                                BizEvent bizEvent;
+                                bizEvent.method = MethodType::ON_PRINTER_ATTRIBUTES;
+                                bizEvent.data = attributes;
+                                handleEventMessage(bizEvent);
+                            }
+                        }
                     }
                 }
             }

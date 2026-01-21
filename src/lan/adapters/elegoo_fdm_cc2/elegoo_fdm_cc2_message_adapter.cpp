@@ -491,8 +491,7 @@ namespace elink
             printerInfo_.mainboardId = printerAttributes.mainboardId;
             printerInfo_.model = printerAttributes.model;
         }
-        printerAttributes.capabilities.cameraCapabilities.supportsCamera = true;    // Assume printer supports camera
-        printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = true; // Assume printer
+
         printerAttributes.capabilities.fanComponents = {
             {"model", true, 0, 100, true},
             // {"heatsink", true, 0, 100, true},
@@ -517,15 +516,30 @@ namespace elink
                 "sdcard",
                 true,
             }};
-
+        
+        printerAttributes.capabilities.cameraCapabilities.supportsCamera = true;    // Assume printer supports camera
+        printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = true; // Assume printer
         printerAttributes.capabilities.systemCapabilities.canGetDiskInfo = true;
         printerAttributes.capabilities.systemCapabilities.canSetPrinterName = true;
         printerAttributes.capabilities.systemCapabilities.supportsMultiFilament = true;
         printerAttributes.capabilities.printCapabilities.supportsAutoBedLeveling = true;
-        printerAttributes.capabilities.printCapabilities.supportsTimeLapse = true;
         printerAttributes.capabilities.printCapabilities.supportsHeatedBedSwitching = true;
         printerAttributes.capabilities.printCapabilities.supportsFilamentMapping = true;
         printerAttributes.capabilities.printCapabilities.supportsAutoRefill = true;
+
+        // Special handling for Centauri 2 model without time-lapse support
+        if(printerInfo_.model.find("Centauri 2") != std::string::npos)
+        {
+            printerAttributes.capabilities.printCapabilities.supportsTimeLapse = this->printerAttributes_ .capabilities.printCapabilities.supportsTimeLapse;
+        }
+
+        // In cloud mode, disable time-lapse support
+        if(printerInfo_.networkMode == NetworkMode::CLOUD)
+        {
+            printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = false;
+        }
+
+        this->printerAttributes_ = printerAttributes;
         return printerAttributes;
     }
 
@@ -1103,6 +1117,28 @@ namespace elink
                         finalStatus.externalDeviceStatus.canvasConnected = (type == 0) ? false : true;
                     }
                 }
+
+                // For C2, the camera component needs to be configured to be supported, so special handling is required.
+                // networkMode==CLOUD, time-lapse is not supported
+                if(this->printerInfo_.model.find("Centauri 2") != std::string::npos && printerInfo_.networkMode != NetworkMode::CLOUD)
+                {
+                    if(externalPrinter.contains("chassis_camera")&& externalPrinter["chassis_camera"].is_object())
+                    {
+                        if(externalPrinter["chassis_camera"].contains("configured") && externalPrinter["chassis_camera"]["configured"].is_number())
+                        {
+                            int configured = JsonUtils::safeGetInt(externalPrinter["chassis_camera"], "configured", 0);
+                            bool previousSupport = this->printerAttributes_.capabilities.cameraCapabilities.supportsTimeLapse;
+                            bool support= (configured == 1);
+                            if(previousSupport != support)
+                            {
+                                ELEGOO_LOG_INFO("Printer {} camera time-lapse support changed to {}", StringUtils::maskString(printerInfo_.printerId), support);
+                                this->printerAttributes_.capabilities.cameraCapabilities.supportsTimeLapse = (configured == 1);
+                                this->setPrinterAttributesChanged(true);
+                            }
+                        }
+                    }
+                }
+
             }
 
             if (finalResult.contains("canvas_info") && finalResult["canvas_info"].is_object())
