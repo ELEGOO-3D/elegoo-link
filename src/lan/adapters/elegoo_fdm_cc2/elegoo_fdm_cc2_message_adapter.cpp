@@ -1133,7 +1133,7 @@ namespace elink
                             if(previousSupport != support)
                             {
                                 ELEGOO_LOG_INFO("Printer {} camera time-lapse support changed to {}", StringUtils::maskString(printerInfo_.printerId), support);
-                                this->printerAttributes_.capabilities.cameraCapabilities.supportsTimeLapse = (configured == 1);
+                                this->printerAttributes_.capabilities.printCapabilities.supportsTimeLapse = support;
                                 this->setPrinterAttributesChanged(true);
                             }
                         }
