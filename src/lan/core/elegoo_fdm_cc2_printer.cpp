@@ -33,10 +33,6 @@ namespace elink
             }
         }
         PrinterAttributesResult result = BasePrinter::getPrinterAttributes(params, timeout);
-        if (result.isSuccess())
-        {
-            // Additional processing for CC2 printer attributes can be added here if needed
-        }
         return result;
     }
 

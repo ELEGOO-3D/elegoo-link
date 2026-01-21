@@ -78,7 +78,7 @@ namespace elink
                     }
 
                     param["filename"] = startPrintData.fileName;
-                    param["config"]["delay_video"] = startPrintData.enableTimeLapse;
+                    param["config"]["delay_video"] = printerAttributes_.capabilities.printCapabilities.supportsTimeLapse ? startPrintData.enableTimeLapse : false;
                     param["config"]["printer_check"] = startPrintData.autoBedLeveling;
                     param["config"]["print_layout"] = startPrintData.heatedBedType == 0 ? "A" : "B";
                     param["config"]["bedlevel_force"] = startPrintData.bedLevelForce;
@@ -518,7 +518,7 @@ namespace elink
             }};
         
         printerAttributes.capabilities.cameraCapabilities.supportsCamera = true;    // Assume printer supports camera
-        printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = true; // Assume printer
+        printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = true; // Assume printer supports time-lapse
         printerAttributes.capabilities.systemCapabilities.canGetDiskInfo = true;
         printerAttributes.capabilities.systemCapabilities.canSetPrinterName = true;
         printerAttributes.capabilities.systemCapabilities.supportsMultiFilament = true;
@@ -526,6 +526,7 @@ namespace elink
         printerAttributes.capabilities.printCapabilities.supportsHeatedBedSwitching = true;
         printerAttributes.capabilities.printCapabilities.supportsFilamentMapping = true;
         printerAttributes.capabilities.printCapabilities.supportsAutoRefill = true;
+        printerAttributes.capabilities.printCapabilities.supportsTimeLapse = true;
 
         // Special handling for Centauri 2 model without time-lapse support
         if(printerInfo_.model.find("Centauri 2") != std::string::npos)
