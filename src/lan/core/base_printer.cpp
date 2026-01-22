@@ -449,16 +449,16 @@ namespace elink
                             bizEvent.method = data.method;
                             bizEvent.data = data.data.value();
                             ELEGOO_LOG_DEBUG("Received event from printer {}",
-                                            StringUtils::maskString(printerInfo_.printerId));
+                                             StringUtils::maskString(printerInfo_.printerId));
                             handleEventMessage(bizEvent);
                         }
 
-                        if(data.method == MethodType::ON_PRINTER_STATUS)
+                        if (data.method == MethodType::ON_PRINTER_STATUS)
                         {
-                            if(adapter_->isPrinterAttributesChanged())
+                            if (adapter_->isPrinterAttributesChanged())
                             {
                                 // Update printer attributes cache
-                                auto  attributes = adapter_->getPrinterAttributes();
+                                auto attributes = adapter_->getPrinterAttributes();
                                 adapter_->setPrinterAttributesChanged(false);
                                 BizEvent bizEvent;
                                 bizEvent.method = MethodType::ON_PRINTER_ATTRIBUTES;
@@ -710,25 +710,23 @@ namespace elink
         {
             if (future.wait_for(timeout) == std::future_status::timeout)
             {
+
+                try
+                {
+                    promise->set_value(BizResult<nlohmann::json>::Error(
+                        ELINK_ERROR_CODE::OPERATION_TIMEOUT, "Request timed out after " + std::to_string(timeout.count()) +
+                                                                 " milliseconds"));
+                }
+                catch (const std::future_error &)
+                {
+                    // Promise already set
+                }
+
                 {
                     std::lock_guard<std::mutex> lock(requestsMutex_);
-                    auto it = pendingRequests_.find(printerBizRequest.requestId);
-                    if (it != pendingRequests_.end())
-                    {
-                        try
-                        {
-                            it->second.promise->set_value(BizResult<nlohmann::json>::Error(
-                                ELINK_ERROR_CODE::OPERATION_TIMEOUT,
-                                "Request timed out after " + std::to_string(timeout.count()) +
-                                    " milliseconds"));
-                        }
-                        catch (const std::future_error &)
-                        {
-                            // Promise already set
-                        }
-                        pendingRequests_.erase(it);
-                    }
+                    pendingRequests_.erase(printerBizRequest.requestId);
                 }
+
                 ELEGOO_LOG_WARN("Request {} for printer {} timed out after {}ms",
                                 printerBizRequest.requestId,
                                 StringUtils::maskString(printerInfo_.printerId),
@@ -745,6 +743,11 @@ namespace elink
         auto promise = std::make_shared<std::promise<BizResult<nlohmann::json>>>();
 
         std::lock_guard<std::mutex> lock(requestsMutex_);
+        if (pendingRequests_.find(requestId) != pendingRequests_.end())
+        {
+            ELEGOO_LOG_ERROR("Request ID already exists in pending requests: {}", requestId);
+            return nullptr;
+        }
         pendingRequests_[requestId] = {
             requestId,
             promise,
@@ -851,7 +854,7 @@ namespace elink
                 return;
             }
         }
-        
+
         if (statusPollingThread_.joinable())
         {
             statusPollingThread_.join();
@@ -894,7 +897,7 @@ namespace elink
                          StringUtils::maskString(printerInfo_.printerId));
 
         const int retryIntervalMs = 2000; // Poll every 2 seconds
-        const int maxRetries = 99999;        // Maximum 30 attempts (60 seconds total)
+        const int maxRetries = 99999;     // Maximum 30 attempts (60 seconds total)
         int retryCount = 0;
 
         while (statusPollingRunning_ && retryCount < maxRetries)
@@ -907,9 +910,25 @@ namespace elink
                 break;
             }
 
+            // Wait before next retry (with ability to interrupt)
+            if (statusPollingRunning_ && retryCount < maxRetries)
+            {
+                std::unique_lock<std::mutex> lock(statusPollingMutex_);
+                statusPollingCV_.wait_for(lock, std::chrono::milliseconds(retryIntervalMs),
+                                          [this]
+                                          { return !statusPollingRunning_; });
+            }
+
             // Send status request
             if (adapter_)
             {
+                if(adapter_->hasFullStatusCache())
+                {
+                    ELEGOO_LOG_DEBUG("Full status cache available for printer {}, skipping polling",
+                                     StringUtils::maskString(printerInfo_.printerId));
+                    break;
+                }
+                
                 ELEGOO_LOG_DEBUG("[Retry {}] Polling status for printer {}",
                                  retryCount + 1,
                                  StringUtils::maskString(printerInfo_.printerId));
@@ -947,15 +966,6 @@ namespace elink
             }
 
             retryCount++;
-
-            // Wait before next retry (with ability to interrupt)
-            if (statusPollingRunning_ && retryCount < maxRetries)
-            {
-                std::unique_lock<std::mutex> lock(statusPollingMutex_);
-                statusPollingCV_.wait_for(lock, std::chrono::milliseconds(retryIntervalMs),
-                                          [this]
-                                          { return !statusPollingRunning_; });
-            }
         }
 
         if (retryCount >= maxRetries)

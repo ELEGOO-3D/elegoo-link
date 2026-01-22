@@ -342,6 +342,12 @@ namespace elink
         // Register pending request with promise
         {
             std::lock_guard<std::mutex> lock(requestsMutex_);
+            if( pendingRequests_.find(printerBizRequest.requestId) != pendingRequests_.end())
+            {
+                ELEGOO_LOG_ERROR("Request ID already exists in pending requests: {}", printerBizRequest.requestId);
+                return BizResult<nlohmann::json>{
+                    ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to register pending request"};
+            }
             pendingRequests_[printerBizRequest.requestId] = {
                 printerBizRequest.requestId,
                 promise,

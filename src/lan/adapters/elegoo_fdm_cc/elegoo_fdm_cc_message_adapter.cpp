@@ -371,7 +371,7 @@ namespace elink
                 {
                     // Clean up completed request record
                     removeRequestRecord(printerResponseId);
-                    ELEGOO_LOG_TRACE("Found request mapping for printer response: {} -> {}",
+                    ELEGOO_LOG_DEBUG("Found request mapping for printer response: {} -> {}",
                                      printerResponseId, record.standardMessageId);
                 }
             }

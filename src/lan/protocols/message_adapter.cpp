@@ -32,12 +32,12 @@ namespace elink
         auto now = std::chrono::high_resolution_clock::now();
         auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(1000, 9999);
+        static std::atomic<int64_t> counter{0}; // Use atomic for thread safety
+
+        int64_t currentCounter = counter.fetch_add(1, std::memory_order_relaxed); // Atomically increment counter
 
         std::stringstream ss;
-        ss << "msg_" << timestamp << "_" << dis(gen);
+        ss << "msg_" << timestamp << "_" << currentCounter;
         return ss.str();
     }
 
@@ -45,7 +45,7 @@ namespace elink
     {
         static std::random_device rd;
         static std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(10000, 99999); // 10000 to 99999
+        std::uniform_int_distribution<> dis(1000000, 9999999); // 1000000 to 9999999
 
         auto x = dis(gen);
         return x < 0 ? std::to_string(-x) : std::to_string(x);
@@ -90,7 +90,7 @@ namespace elink
 
         pendingRequests_[printerRequestId] = record;
 
-        ELEGOO_LOG_TRACE("Recorded request mapping: {} -> {}", printerRequestId, standardMessageId);
+        ELEGOO_LOG_DEBUG("Recorded request mapping: {} -> {}", printerRequestId, standardMessageId);
     }
 
     BaseMessageAdapter::RequestRecord BaseMessageAdapter::findRequestRecord(const std::string &printerResponseId) const
@@ -102,35 +102,6 @@ namespace elink
         {
             return it->second;
         }
-
-        // If direct lookup fails, try to extract ID from JSON response
-        try
-        {
-            auto responseJson = parseJson(printerResponseId);
-            if (responseJson.contains("id"))
-            {
-                std::string responseId = responseJson["id"];
-                auto idIt = pendingRequests_.find(responseId);
-                if (idIt != pendingRequests_.end())
-                {
-                    return idIt->second;
-                }
-            }
-            if (responseJson.contains("id"))
-            {
-                std::string responseId = responseJson["id"];
-                auto idIt = pendingRequests_.find(responseId);
-                if (idIt != pendingRequests_.end())
-                {
-                    return idIt->second;
-                }
-            }
-        }
-        catch (...)
-        {
-            // JSON parsing failed, ignore
-        }
-
         // Return empty record
         return RequestRecord{};
     }
