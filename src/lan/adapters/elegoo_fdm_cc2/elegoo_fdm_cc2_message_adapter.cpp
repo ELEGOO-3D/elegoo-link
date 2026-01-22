@@ -1128,7 +1128,7 @@ namespace elink
                         if(externalPrinter["chassis_camera"].contains("configured") && externalPrinter["chassis_camera"]["configured"].is_number())
                         {
                             int configured = JsonUtils::safeGetInt(externalPrinter["chassis_camera"], "configured", 0);
-                            bool previousSupport = this->printerAttributes_.capabilities.cameraCapabilities.supportsTimeLapse;
+                            bool previousSupport = this->printerAttributes_.capabilities.printCapabilities.supportsTimeLapse;
                             bool support= (configured == 1);
                             if(previousSupport != support)
                             {
