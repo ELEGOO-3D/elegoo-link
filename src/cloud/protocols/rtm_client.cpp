@@ -60,13 +60,6 @@ namespace elink
             connectionStateCallback_ = callback;
         }
 
-        // Set internal connection state update callback
-        void setConnectionStateUpdateCallback(const std::function<void(RTM_CONNECTION_STATE)> &callback)
-        {
-            std::lock_guard<std::mutex> lock(callbackMutex_);
-            connectionStateUpdateCallback_ = callback;
-        }
-
         // Clean up expired states (states older than maxAge seconds)
         void cleanupExpiredStates(int maxAgeSeconds = 20)
         {
@@ -182,6 +175,11 @@ namespace elink
             return currentConnectionChangeReason_;
         }
 
+        RTM_CONNECTION_STATE getCurrentConnectionState() const
+        {
+            std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(connectionMutex_));
+            return currentConnectionState_;
+        }
         // Wait for subscribe result
         bool waitForSubscribeResult(uint64_t requestId, std::string &errorMessage, int timeoutSeconds = 10)
         {
@@ -189,9 +187,7 @@ namespace elink
 
             // Wait for state to be created by callback
             if (subscribeCondition_.wait_for(lock, std::chrono::seconds(timeoutSeconds), [this, requestId]
-                                             { 
-                                                return subscribeStates_.find(requestId) != subscribeStates_.end();
-                                             }))
+                                             { return subscribeStates_.find(requestId) != subscribeStates_.end(); }))
             {
                 auto it = subscribeStates_.find(requestId);
                 if (it != subscribeStates_.end())
@@ -202,7 +198,7 @@ namespace elink
                     return success;
                 }
             }
-            
+
             // Timeout: don't delete state, let callback cleanup or periodic cleanup handle it
             errorMessage = "Subscribe timeout";
             return false;
@@ -215,9 +211,7 @@ namespace elink
 
             // Wait for state to be created by callback
             if (unsubscribeCondition_.wait_for(lock, std::chrono::seconds(timeoutSeconds), [this, requestId]
-                                               { 
-                                                return unsubscribeStates_.find(requestId) != unsubscribeStates_.end();
-                                               }))
+                                               { return unsubscribeStates_.find(requestId) != unsubscribeStates_.end(); }))
             {
                 auto it = unsubscribeStates_.find(requestId);
                 if (it != unsubscribeStates_.end())
@@ -228,7 +222,7 @@ namespace elink
                     return success;
                 }
             }
-            
+
             // Timeout: don't delete state, let callback cleanup or periodic cleanup handle it
             errorMessage = "Unsubscribe timeout";
             return false;
@@ -241,9 +235,7 @@ namespace elink
 
             // Wait for state to be created by callback
             if (publishCondition_.wait_for(lock, std::chrono::seconds(timeoutSeconds), [this, requestId]
-                                           { 
-                                            return publishStates_.find(requestId) != publishStates_.end();
-                                           }))
+                                           { return publishStates_.find(requestId) != publishStates_.end(); }))
             {
                 auto it = publishStates_.find(requestId);
                 if (it != publishStates_.end())
@@ -253,7 +245,7 @@ namespace elink
                     return result;
                 }
             }
-            
+
             // Timeout: don't delete state, let callback cleanup or periodic cleanup handle it
             return VoidResult::Error(ELINK_ERROR_CODE::OPERATION_TIMEOUT, "Publish timeout");
         }
@@ -272,18 +264,11 @@ namespace elink
             ELEGOO_LOG_DEBUG("[RTM] Connection state changed to: {}, reason: {}",
                              static_cast<int>(state), static_cast<int>(reason));
 
-            // Call internal state update callback
-            std::function<void(RTM_CONNECTION_STATE)> stateUpdateCallback;
+            // Call connection state callback
             RtmConnectionStateCallback connectionStateCallback;
             {
                 std::lock_guard<std::mutex> lock(callbackMutex_);
-                stateUpdateCallback = connectionStateUpdateCallback_;
                 connectionStateCallback = connectionStateCallback_;
-            }
-
-            if (stateUpdateCallback)
-            {
-                stateUpdateCallback(state);
             }
 
             if (connectionStateCallback)
@@ -320,7 +305,7 @@ namespace elink
             {
                 std::lock_guard<std::mutex> lock(subscribeMutex_);
                 // Create state directly in callback
-                SubscribeState& state = subscribeStates_[requestId];
+                SubscribeState &state = subscribeStates_[requestId];
                 state.success = (errorCode == RTM_ERROR_OK);
                 state.errorMessage = errorCode == RTM_ERROR_OK ? "Subscribe success" : "Subscribe failed with error code: " + std::to_string(static_cast<int>(errorCode));
             }
@@ -336,7 +321,7 @@ namespace elink
             {
                 std::lock_guard<std::mutex> lock(unsubscribeMutex_);
                 // Create state directly in callback
-                UnsubscribeState& state = unsubscribeStates_[requestId];
+                UnsubscribeState &state = unsubscribeStates_[requestId];
                 state.success = (errorCode == RTM_ERROR_OK);
                 state.errorMessage = errorCode == RTM_ERROR_OK ? "Unsubscribe success" : "Unsubscribe failed with error code: " + std::to_string(static_cast<int>(errorCode));
             }
@@ -352,13 +337,18 @@ namespace elink
             {
                 std::lock_guard<std::mutex> lock(publishMutex_);
                 // Create state directly in callback
-                PublishState& state = publishStates_[requestId];
+                PublishState &state = publishStates_[requestId];
                 state.result = rtmErrorCodeToNetworkErrorCode(errorCode);
             }
             publishCondition_.notify_all();
 
             ELEGOO_LOG_TRACE("[RTM] Publish result: {}",
                              errorCode == RTM_ERROR_OK ? "Success" : "Failed");
+            if (errorCode == RTM_ERROR_NOT_CONNECTED)
+            {
+                std::lock_guard<std::mutex> lock(connectionMutex_);
+                currentConnectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
+            }
         }
 
         // Login result event
@@ -381,7 +371,6 @@ namespace elink
         RtmMessageCallback messageCallback_;
         RtmPresenceCallback presenceCallback_;
         RtmConnectionStateCallback connectionStateCallback_;
-        std::function<void(RTM_CONNECTION_STATE)> connectionStateUpdateCallback_;
 
         // Login sync wait related
         std::mutex loginMutex_;
@@ -398,19 +387,22 @@ namespace elink
         RTM_CONNECTION_CHANGE_REASON currentConnectionChangeReason_ = RTM_CONNECTION_CHANGE_REASON(0);
 
         // State structures for concurrent requests
-        struct SubscribeState {
+        struct SubscribeState
+        {
             bool success = false;
             std::string errorMessage;
             std::chrono::steady_clock::time_point timestamp = std::chrono::steady_clock::now();
         };
 
-        struct UnsubscribeState {
+        struct UnsubscribeState
+        {
             bool success = false;
             std::string errorMessage;
             std::chrono::steady_clock::time_point timestamp = std::chrono::steady_clock::now();
         };
 
-        struct PublishState {
+        struct PublishState
+        {
             VoidResult result;
             std::chrono::steady_clock::time_point timestamp = std::chrono::steady_clock::now();
         };
@@ -434,13 +426,8 @@ namespace elink
     // ==================== RtmClient::Impl Implementation ====================
 
     RtmClient::RtmClient(const RtmConfig &config)
-        : config_(config), eventHandler_(std::make_unique<RtmEventHandler>()), rtmClient_(nullptr), isLoggedIn_(false), connectionState_(RTM_CONNECTION_STATE_DISCONNECTED), isShutdown_(false)
+        : config_(config), eventHandler_(std::make_unique<RtmEventHandler>()), rtmClient_(nullptr), isLoggedIn_(false), isShutdown_(false)
     {
-        // Set internal connection state update callback
-        eventHandler_->setConnectionStateUpdateCallback([this](RTM_CONNECTION_STATE state)
-                                                        {
-                std::unique_lock<std::shared_mutex> lock(stateMutex_);
-                connectionState_ = state; });
         initialize();
     }
 
@@ -483,7 +470,6 @@ namespace elink
 
             // Reset state
             isLoggedIn_ = false;
-            connectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
             subscribedChannels_.clear();
 
             ELEGOO_LOG_DEBUG("[RTM] Client initialized successfully for user: {}", config_.userId);
@@ -515,7 +501,6 @@ namespace elink
             }
             subscribedChannels_.clear();
             isLoggedIn_ = false;
-            connectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
         }
     }
 
@@ -535,7 +520,7 @@ namespace elink
                 return VoidResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "RTM client not initialized");
             }
 
-            if (isLoggedIn_ && connectionState_ == RTM_CONNECTION_STATE_CONNECTED)
+            if (isLoggedIn_ && eventHandler_->getCurrentConnectionState() == RTM_CONNECTION_STATE_CONNECTED)
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Already logged in");
             }
@@ -579,7 +564,6 @@ namespace elink
                     {
                         std::unique_lock<std::shared_mutex> lock(stateMutex_);
                         isLoggedIn_ = true;
-                        connectionState_ = RTM_CONNECTION_STATE_CONNECTED;
                     }
                     ELEGOO_LOG_DEBUG("[RTM] Login completed successfully for user: {}", config_.userId);
                     return VoidResult::Success();
@@ -606,7 +590,7 @@ namespace elink
     bool RtmClient::isOnline() const
     {
         std::shared_lock<std::shared_mutex> lock(stateMutex_);
-        return isLoggedIn_ && connectionState_ == RTM_CONNECTION_STATE_CONNECTED;
+        return isLoggedIn_ && eventHandler_->getCurrentConnectionState() == RTM_CONNECTION_STATE_CONNECTED;
     }
 
     VoidResult RtmClient::logout()
@@ -646,7 +630,6 @@ namespace elink
             {
                 std::unique_lock<std::shared_mutex> lock(stateMutex_);
                 isLoggedIn_ = false;
-                connectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
                 subscribedChannels_.clear();
             }
 
@@ -854,8 +837,8 @@ namespace elink
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Not logged in");
             }
-            
-            if(connectionState_ != RTM_CONNECTION_STATE_CONNECTED)
+
+            if (eventHandler_->getCurrentConnectionState() != RTM_CONNECTION_STATE_CONNECTED)
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "RTM client not connected");
             }
@@ -1002,8 +985,7 @@ namespace elink
 
     RtmConnectionState RtmClient::getConnectionState() const
     {
-        std::shared_lock<std::shared_mutex> lock(stateMutex_);
-        return connectionState_;
+        return eventHandler_->getCurrentConnectionState();
     }
 
     RtmConnectionChangeReason RtmClient::getConnectionChangeReason() const

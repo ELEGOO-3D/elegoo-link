@@ -214,7 +214,6 @@ namespace elink
         std::unique_ptr<class RtmEventHandler> eventHandler_;
         agora::rtm::IRtmClient *rtmClient_;
         std::atomic<bool> isLoggedIn_;
-        std::atomic<RtmConnectionState> connectionState_;
         std::atomic<bool> isShutdown_;
         std::set<std::string> subscribedChannels_;
     };
