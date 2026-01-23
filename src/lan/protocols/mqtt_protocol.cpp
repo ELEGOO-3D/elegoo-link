@@ -521,6 +521,7 @@ namespace elink
          */
         void heartbeatLoop()
         {
+            int errorCount = 0;
             while (heartbeatRunning_)
             {
                 // Wait for the configured interval
@@ -545,8 +546,13 @@ namespace elink
                 // Send heartbeat using virtual method
                 if (!sendHeartbeat())
                 {
+                    errorCount++;
                     ELEGOO_LOG_ERROR("[{}] MQTT heartbeat: failed to send heartbeat", lastConnectParams_.host);
-                    continue;
+                    // continue;
+                }
+                else
+                {
+                    errorCount = 0; // Reset error count on success
                 }
 
                 // Check heartbeat response timeout
@@ -555,10 +561,17 @@ namespace elink
                     now - lastPongReceived_);
 
                 int timeoutSeconds = parent_->getHeartbeatTimeoutSeconds();
-                if (timeSinceLastResponse > std::chrono::seconds(timeoutSeconds))
+                if (timeSinceLastResponse > std::chrono::seconds(timeoutSeconds) || errorCount >= 3)
                 {
-                    ELEGOO_LOG_ERROR("[{}] MQTT heartbeat: response timeout, last response {} seconds ago",
-                                     lastConnectParams_.host, timeSinceLastResponse.count());
+                    if (errorCount >= 3)
+                    {
+                        ELEGOO_LOG_ERROR("[{}] MQTT heartbeat: consecutive send failures reached {}", lastConnectParams_.host, errorCount);
+                    }
+                    else
+                    {
+                        ELEGOO_LOG_ERROR("[{}] MQTT heartbeat: response timeout, last response {} seconds ago",
+                                         lastConnectParams_.host, timeSinceLastResponse.count());
+                    }
                     // {
                     //     std::lock_guard<std::mutex> lock(clientMutex_);
                     //     if (client_)
