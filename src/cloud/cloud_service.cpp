@@ -441,13 +441,16 @@ namespace elink
 
     VoidResult CloudService::logout()
     {
-        std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
-
-        if (m_httpService)
+        VoidResult result;
         {
-            return m_httpService->logout();
+            std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+            if (m_httpService)
+            {
+                result = m_httpService->logout();
+            }
         }
-        return VoidResult::Success();
+        clearHttpCredential();
+        return result;
     }
 
     GetRtcTokenResult CloudService::getRtcToken() const
@@ -870,6 +873,12 @@ namespace elink
                     {
                         std::lock_guard<std::mutex> lock(m_refreshCredentialsMutex);
                         m_IsRefreshingCredentials = false;
+                    }
+                    // Clean up credential cache
+                    {
+                        std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                        m_agoraCredential = nullptr;
+                        m_mqttCredential = nullptr;
                     }
                     return;
                 }
