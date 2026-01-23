@@ -146,6 +146,34 @@ namespace elink
         virtual PrinterAttributesData getPrinterAttributes() const = 0;
         virtual bool isPrinterAttributesChanged() const = 0;
         virtual void setPrinterAttributesChanged(bool changed) = 0;
+
+        /**
+         * Get the last update time of full status cache
+         * @return Optional time point, empty if no cache exists
+         */
+        virtual std::optional<std::chrono::system_clock::time_point> getFullStatusLastUpdateTime() const = 0;
+        virtual void resetFullStatusLastUpdateTime() = 0;
+
+        /**
+         * Set device connection status
+         * @param connected true if connected, false if disconnected
+         */
+        virtual void setConnected(bool connected) = 0;
+
+        /**
+         * Get device connection status
+         * @return true if connected, false if disconnected
+         */
+        virtual bool isConnected() const = 0;
+
+        /**
+         * Wrap status data in printer-specific protocol format
+         * If incrementalData is empty, returns full cached status wrapped in protocol format
+         * If incrementalData is provided, returns the incremental data wrapped in protocol format
+         * @param incrementalData Optional delta/incremental status data to wrap (default: empty = use full cached status)
+         * @return JSON object in protocol format (e.g., {"id":0, "method":6000, "result":data}), or empty if no data available
+         */
+        virtual nlohmann::json wrapStatusData(const nlohmann::json& incrementalData = nlohmann::json()) const = 0;
     };
 
     /**
@@ -199,10 +227,34 @@ namespace elink
         virtual void setPrinterAttributesChanged(bool changed) override{
             printerAttributesChanged_ = changed;
         }
+
+        virtual std::optional<std::chrono::system_clock::time_point> getFullStatusLastUpdateTime() const override {
+            return fullStatusLastUpdateTime_;
+        }
+        virtual void resetFullStatusLastUpdateTime() override {
+            fullStatusLastUpdateTime_ = std::nullopt;
+        }
+
+        virtual void setConnected(bool connected) override {
+            isConnected_ = connected;
+        }
+
+        virtual bool isConnected() const override {
+            return isConnected_;
+        }
+
+        virtual nlohmann::json wrapStatusData(const nlohmann::json& incrementalData = nlohmann::json()) const override {
+            // Default implementation returns empty JSON
+            // Derived classes should override this with protocol-specific format
+            return nlohmann::json();
+        }
+
     protected:
         mutable PrinterInfo printerInfo_;
         mutable PrinterAttributesData printerAttributes_;
         mutable bool printerAttributesChanged_ = false;
+        mutable std::optional<std::chrono::system_clock::time_point> fullStatusLastUpdateTime_;
+        std::atomic<bool> isConnected_{false};
 
         // Request tracking structure
         struct RequestRecord

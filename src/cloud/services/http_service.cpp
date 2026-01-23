@@ -887,6 +887,71 @@ namespace elink
         }
     }
 
+    BizResult<int> HttpService::getDeviceOnlineStatus(const std::string &serialNumber)
+    {
+        if (serialNumber.empty())
+        {
+            return BizResult<int>::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Serial number cannot be empty");
+        }
+
+        auto httpClient = getHttpClient();
+        if (!httpClient)
+        {
+            ELEGOO_LOG_WARN("HTTP client not initialized, cannot get device online status");
+            return BizResult<int>::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP client not initialized");
+        }
+
+        nlohmann::json requestBody = {
+            {"deviceCode", serialNumber}};
+
+        BizResult<HttpResponse> result = httpClient->post(buildUrlPath("/api/v1/device-management-server/device-register/online-status"), requestBody);
+        if (!result.isSuccess())
+        {
+            ELEGOO_LOG_ERROR("Failed to get device online status: {}", result.message);
+            return BizResult<int>::Error(result.code, result.message);
+        }
+
+        const auto &response = result.value();
+        auto handleResult = handleResponse(response);
+        if (!handleResult.isSuccess())
+        {
+            return BizResult<int>::Error(handleResult.code, handleResult.message);
+        }
+
+        try
+        {
+            nlohmann::json jsonResponse = nlohmann::json::parse(response.body);
+            int code = JsonUtils::safeGetInt(jsonResponse, "code", -1);
+
+            if (code == 0)
+            {
+                if (jsonResponse.contains("data") && jsonResponse["data"].is_object())
+                {
+                    int onlineStatus = JsonUtils::safeGetInt(jsonResponse["data"], "onlineStatus", 0);
+                    ELEGOO_LOG_INFO("Device online status retrieved successfully: {}", onlineStatus);
+                    return BizResult<int>::Ok(onlineStatus);
+                }
+                else
+                {
+                    ELEGOO_LOG_ERROR("Invalid response format: missing or invalid data field");
+                    return BizResult<int>::Error(ELINK_ERROR_CODE::SERVER_INVALID_RESPONSE, "Invalid response format");
+                }
+            }
+            else
+            {
+                std::string msg = JsonUtils::safeGetString(jsonResponse, "msg", "Unknown error");
+                ELEGOO_LOG_ERROR("Failed to get device online status, code: {}, message: {}", code, msg);
+                auto errorResult = serverErrorToNetworkError(code);
+                return BizResult<int>::Error(errorResult.code, msg);
+            }
+        }
+        catch (const std::exception &e)
+        {
+            ELEGOO_LOG_ERROR("Failed to parse device online status response: {}", e.what());
+            return BizResult<int>::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to parse response");
+        }
+    }
+
     GetFileListResult HttpService::getFileList(const GetFileListParams &params)
     {
         if (params.printerId.empty())
@@ -1359,16 +1424,33 @@ namespace elink
                 if (jsonResponse.contains("data") && jsonResponse["data"].is_object())
                 {
                     nlohmann::json data = jsonResponse["data"];
+                    nlohmann::json fieldTimestamps = nlohmann::json::object();
+
                     for (auto it = data.begin(); it != data.end(); ++it)
                     {
                         const std::string &key = it.key();
                         if (it.value().is_array())
                         {
                             nlohmann::json subObject;
+                            nlohmann::json timestampsForKey = nlohmann::json::object();
+
                             for (const auto &item : it.value())
                             {
                                 std::string linkKey = JsonUtils::safeGetString(item, "reportLinkKey", "");
                                 std::string reportValue = JsonUtils::safeGetString(item, "reportValue", "");
+                                int64_t reportDataRefId = std::stoll(JsonUtils::safeGetString(item, "reportDataRefId", "0"));
+
+                                // Store timestamp for this field
+                                if (!linkKey.empty() && reportDataRefId > 0)
+                                {
+                                    timestampsForKey[linkKey] = reportDataRefId;
+                                    ELEGOO_LOG_TRACE("[TIMESTAMP-HTTP] Field {}.{} reportDataRefId={}", key, linkKey, reportDataRefId);
+                                }
+                                else if (reportDataRefId == 0)
+                                {
+                                    ELEGOO_LOG_WARN("[TIMESTAMP-HTTP] Field {}.{} has reportDataRefId=0 or empty!", key, linkKey);
+                                }
+
                                 if (key == "external_device" && linkKey == "type")
                                 {
                                     subObject[linkKey] = reportValue;
@@ -1416,13 +1498,32 @@ namespace elink
                                 }
                             }
                             resultJson[key] = subObject;
+
+                            // Add timestamps for this key if any fields have timestamps
+                            if (!timestampsForKey.empty())
+                            {
+                                fieldTimestamps[key] = timestampsForKey;
+                            }
                         }
                     }
 
                     // Ensure that the exception status is always returned as an empty array format to avoid repeated exception statuses
                     // causing repeated notifications in the app
-                    if(resultJson.contains("machine_status") && resultJson["machine_status"].is_object()){
+                    if (resultJson.contains("machine_status") && resultJson["machine_status"].is_object())
+                    {
                         resultJson["machine_status"]["exception_status"] = std::vector<int>{};
+                    }
+
+                    // Add field_timestamps to result for CloudElegooFdmCC2MessageAdapter
+                    if (!fieldTimestamps.empty())
+                    {
+                        resultJson["field_timestamps"] = fieldTimestamps;
+                        ELEGOO_LOG_INFO("[TIMESTAMP-HTTP] Added field_timestamps to HTTP response, {} top-level keys", fieldTimestamps.size());
+                        ELEGOO_LOG_DEBUG("[TIMESTAMP-HTTP] Full field_timestamps: {}", fieldTimestamps.dump());
+                    }
+                    else
+                    {
+                        ELEGOO_LOG_WARN("[TIMESTAMP-HTTP] HTTP response has NO field_timestamps!");
                     }
 
                     return BizResult<nlohmann::json>::Ok(std::move(resultJson));

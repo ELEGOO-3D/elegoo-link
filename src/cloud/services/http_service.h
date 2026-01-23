@@ -64,6 +64,8 @@ namespace elink
 
         VoidResult unbindPrinter(const UnbindPrinterParams &params);
 
+        BizResult<int> getDeviceOnlineStatus(const std::string &serialNumber);
+
         GetFileListResult getFileList(const GetFileListParams &params);
 
         BizResult<std::string> getThumbnailUrl(const std::string &thumbnailName);

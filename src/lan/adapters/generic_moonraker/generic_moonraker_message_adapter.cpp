@@ -516,6 +516,12 @@ namespace elink
                 finalStatus.printerStatus.exceptionCodes = {};
             }
 
+            if (!isConnected())
+            {
+                finalStatus.printerStatus.state = PrinterState::OFFLINE;
+                finalStatus.printerStatus.subState = PrinterSubState::NONE;
+            }
+            
             if (finalResult.contains("display_status") && finalResult["display_status"].is_object())
             {
                 auto displayStatus = finalResult["display_status"];
@@ -590,6 +596,7 @@ namespace elink
         std::lock_guard<std::mutex> lock(statusCacheMutex_);
         cachedFullStatusJson_ = fullStatusResult;
         hasFullStatusCache_ = true;
+        fullStatusLastUpdateTime_ = std::chrono::system_clock::now();
         ELEGOO_LOG_TRACE("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
     }
 
@@ -638,6 +645,7 @@ namespace elink
         std::lock_guard<std::mutex> lock(statusCacheMutex_);
         hasFullStatusCache_ = false;
         cachedFullStatusJson_ = nlohmann::json::object();
+        fullStatusLastUpdateTime_ = std::chrono::system_clock::time_point();
         ELEGOO_LOG_DEBUG("Cleared status cache for printer {}", printerInfo_.printerId);
     }
 

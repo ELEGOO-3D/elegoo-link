@@ -437,7 +437,9 @@ namespace elink
                         response.message = StringUtils::formatErrorMessage("Unknown error.", ack);
                         response.data = errorData;
                     }
-                } else {
+                }
+                else
+                {
                     response.message = "No Ack in response";
                     response.code = ELINK_ERROR_CODE::PRINTER_INVALID_RESPONSE; // Default error
                 }
@@ -796,6 +798,12 @@ namespace elink
             }
         }
 
+        if (!isConnected())
+        {
+            printerStatusData.printerStatus.state = PrinterState::OFFLINE;
+            printerStatusData.printerStatus.subState = PrinterSubState::NONE;
+        }
+
         if (statusJson.contains("CurrentFanSpeed") && statusJson["CurrentFanSpeed"].is_object())
         {
             auto currentFanSpeed = statusJson["CurrentFanSpeed"];
@@ -860,7 +868,6 @@ namespace elink
         attributesEvent.capabilities.storageComponents.push_back({"udisk", false});
 
         attributesEvent.capabilities.systemCapabilities.canSetPrinterName = true;
-        
 
         attributesEvent.capabilities.printCapabilities.supportsAutoBedLeveling = true;
         attributesEvent.capabilities.printCapabilities.supportsTimeLapse = true;
@@ -870,14 +877,17 @@ namespace elink
         bool supportsMultiFilament = false;
         std::string fwVersion = attributesEvent.firmwareVersion;
         // Remove 'v' or 'V' prefix
-        if (!fwVersion.empty() && (fwVersion[0] == 'v' || fwVersion[0] == 'V')) {
+        if (!fwVersion.empty() && (fwVersion[0] == 'v' || fwVersion[0] == 'V'))
+        {
             fwVersion = fwVersion.substr(1);
         }
         // Parse version number (format: X.Y.Z)
         int majorVer = 0, minorVer = 0;
-        if (sscanf(fwVersion.c_str(), "%d.%d", &majorVer, &minorVer) >= 2) {
+        if (sscanf(fwVersion.c_str(), "%d.%d", &majorVer, &minorVer) >= 2)
+        {
             // Determine if greater than 1.1.x
-            if (majorVer > 1 || (majorVer == 1 && minorVer > 1)) {
+            if (majorVer > 1 || (majorVer == 1 && minorVer > 1))
+            {
                 supportsMultiFilament = true;
             }
         }

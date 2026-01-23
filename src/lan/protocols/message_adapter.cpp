@@ -273,4 +273,5 @@ namespace elink
 
     void BaseMessageAdapter::clearStatusCache() {
     }
+
 } // namespace elink

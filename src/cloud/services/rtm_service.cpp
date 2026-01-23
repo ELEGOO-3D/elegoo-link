@@ -711,20 +711,20 @@ namespace elink
                         }
                         handleResponseMessage(standardResponse.requestId, standardResponse.code, standardResponse.message, standardResponse.data);
                     }
-                    else if (parsedMessageType == "event")
-                    {
-                        // Convert printer event to standard event format
-                        PrinterBizEvent data = adapter->convertToEvent(message.content);
-                        if (data.isValid())
-                        {
-                            BizEvent bizEvent;
-                            bizEvent.method = data.method;
-                            bizEvent.data = data.data.value();
-                            ELEGOO_LOG_DEBUG("Received event from printer {}, method={}",
-                                             StringUtils::maskString(rtmEventData.printerId), (int)data.method);
-                            handleEventMessage(bizEvent);
-                        }
-                    }
+                    // else if (parsedMessageType == "event")
+                    // {
+                    //     // Convert printer event to standard event format
+                    //     PrinterBizEvent data = adapter->convertToEvent(message.content);
+                    //     if (data.isValid())
+                    //     {
+                    //         BizEvent bizEvent;
+                    //         bizEvent.method = data.method;
+                    //         bizEvent.data = data.data.value();
+                    //         ELEGOO_LOG_DEBUG("Received event from printer {}, method={}",
+                    //                          StringUtils::maskString(rtmEventData.printerId), (int)data.method);
+                    //         handleEventMessage(bizEvent);
+                    //     }
+                    // }
                 }
             }
         }

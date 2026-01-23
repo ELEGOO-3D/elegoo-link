@@ -568,6 +568,8 @@ namespace elink
             return;
         }
 
+        adapter_->setConnected(connected);
+
         isConnected_ = connected;
         connectionStatus_ = connected ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
         ELEGOO_LOG_INFO("Printer {} connection status changed: {}",

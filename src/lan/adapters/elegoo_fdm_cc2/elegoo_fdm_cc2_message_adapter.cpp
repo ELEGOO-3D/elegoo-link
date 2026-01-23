@@ -627,13 +627,12 @@ namespace elink
             }
             else
             {
-                if (!hasFullStatusCache_)
+                finalResult = mergeStatusUpdateJson(result);
+                if(finalResult.empty())
                 {
-                    // If no cached full status, return empty BizEvent
-                    ELEGOO_LOG_WARN("No cached full status available, cannot merge with delta update for printer {}", StringUtils::maskString(printerInfo_.printerId));
+                    ELEGOO_LOG_WARN("No cached full status JSON available for merge for printer {}", StringUtils::maskString(printerInfo_.printerId));
                     return std::optional<PrinterStatusData>();
                 }
-                finalResult = mergeStatusUpdateJson(result);
                 ELEGOO_LOG_TRACE("Merged delta status JSON with cached full status for printer {}", StringUtils::maskString(printerInfo_.printerId));
             }
             // Parse machine status
@@ -957,6 +956,11 @@ namespace elink
                 finalStatus.printerStatus.supportProgress = true;
             }
 
+            if(!isConnected()){
+                finalStatus.printerStatus.state = PrinterState::OFFLINE;
+                finalStatus.printerStatus.subState = PrinterSubState::NONE;
+            }
+            
             if (finalStatus.printerStatus.state == PrinterState::PRINTING)
             {
                 // Parse print status info
@@ -1235,6 +1239,7 @@ namespace elink
         std::lock_guard<std::mutex> lock(statusCacheMutex_);
         cachedFullStatusJson_ = fullStatusResult;
         hasFullStatusCache_ = true;
+        fullStatusLastUpdateTime_ = std::chrono::system_clock::now();
         ELEGOO_LOG_TRACE("Cached full printer status JSON for printer {}", StringUtils::maskString(printerInfo_.printerId));
     }
 
@@ -1244,8 +1249,7 @@ namespace elink
 
         if (!hasFullStatusCache_)
         {
-            ELEGOO_LOG_WARN("No cached full status JSON available for merge, returning delta status as-is");
-            return deltaStatusResult;
+            return nlohmann::json();
         }
 
         // Create merged JSON, start from cached full status
@@ -1283,6 +1287,7 @@ namespace elink
         std::lock_guard<std::mutex> lock(statusCacheMutex_);
         hasFullStatusCache_ = false;
         cachedFullStatusJson_ = nlohmann::json::object();
+        fullStatusLastUpdateTime_ = std::chrono::system_clock::time_point();
         ELEGOO_LOG_DEBUG("Cleared status cache for printer {}", StringUtils::maskString(printerInfo_.printerId));
     }
 

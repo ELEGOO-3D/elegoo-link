@@ -310,7 +310,7 @@ namespace elink
 
             curl_easy_cleanup(curl);
 
-            ELEGOO_LOG_DEBUG("HTTP Response: {} - {}", response.statusCode, response.body.substr(0, 500));
+            ELEGOO_LOG_DEBUG("HTTP Response: {} - {}", response.statusCode, response.body.substr(0, 4096));
 
             return BizResult<HttpResponse>::Ok(std::move(response));
         }

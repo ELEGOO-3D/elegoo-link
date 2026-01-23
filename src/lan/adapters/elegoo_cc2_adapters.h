@@ -64,11 +64,66 @@ namespace elink
 
         nlohmann::json getCachedFullStatusJson() const override
         {
-            std::lock_guard<std::mutex> lock(statusCacheMutex_);
-            return cachedFullStatusJson_;
+            nlohmann::json result;
+            {
+                std::lock_guard<std::mutex> lock(statusCacheMutex_);
+                result = cachedFullStatusJson_;
+            }
+
+            if (isConnected_ == false)
+            {
+                if(!result.contains("machine_status"))
+                {
+                    result["machine_status"] = nlohmann::json::object();
+                }
+                result["machine_status"]["status"] = -1;
+                result["machine_status"]["sub_status"] = 0;
+            }
+
+            return result;
+        }
+
+        nlohmann::json wrapStatusData(const nlohmann::json &incrementalData = nlohmann::json()) const override
+        {
+            nlohmann::json message;
+            nlohmann::json resultData;
+
+            // If incrementalData is provided and not empty, use it; otherwise use cached full status
+            if (!incrementalData.empty())
+            {
+                resultData = incrementalData;
+            }
+            else
+            {
+                resultData = getCachedFullStatusJson();
+                if (resultData.empty())
+                {
+                    return nlohmann::json();
+                }
+            }
+
+            // Elegoo FDM protocol specific format
+            message["id"] = 0;
+            message["method"] = 6000;
+            message["result"] = resultData;
+            return message;
         }
         void clearStatusCache() override;
-        virtual bool hasFullStatusCache() const override{return hasFullStatusCache_;}
+        virtual bool hasFullStatusCache() const override { return hasFullStatusCache_; }
+
+    protected:
+        // Protected members for CloudElegooFdmCC2MessageAdapter to access
+        std::optional<PrinterStatusData> handlePrinterStatus(MethodType method, const nlohmann::json &printerJson);
+
+        // Status cache and differential update related methods
+        void cacheFullPrinterStatusJson(const nlohmann::json &fullStatusResult);
+        virtual nlohmann::json mergeStatusUpdateJson(const nlohmann::json &deltaStatusResult);
+
+        // Status cache related member variables (cache original JSON data)
+        mutable std::mutex statusCacheMutex_;
+        nlohmann::json cachedFullStatusJson_; // Cached full status original JSON (content of the result field)
+        bool hasFullStatusCache_ = false;     // Whether there is a valid full status cache
+
     private:
         // Command mapping related data - optimized unified management
         static const std::vector<std::pair<MethodType, int>> COMMAND_MAPPING_TABLE;
@@ -78,18 +133,12 @@ namespace elink
         nlohmann::json createStandardBody() const;
         ELINK_ERROR_CODE convertRequestErrorToElegooError(int code) const;
 
-        std::optional<PrinterStatusData> handlePrinterStatus(MethodType method, const nlohmann::json &printerJson);
         std::optional<PrinterAttributesData> handlePrinterAttributes(const nlohmann::json &printerJson);
         std::optional<CanvasStatus> handleCanvasStatus(const nlohmann::json &result);
 
         // Status event continuity check related methods
         bool checkStatusEventContinuity(int currentId);
         // sendMessageToPrinter method inherited from base class
-
-        // Status cache and differential update related methods
-        void cacheFullPrinterStatusJson(const nlohmann::json &fullStatusResult);
-        nlohmann::json mergeStatusUpdateJson(const nlohmann::json &deltaStatusResult);
-        
 
         // Status event continuity monitoring related member variables
         mutable std::mutex statusSequenceMutex_;
@@ -99,11 +148,6 @@ namespace elink
         int nonContinuousCount_ = 0;
 
         int printerStatusSequenceState_ = 0; // Status sequence state, 0: uninitialized, 1: full status data obtained
-
-        // Status cache related member variables (cache original JSON data)
-        mutable std::mutex statusCacheMutex_;
-        nlohmann::json cachedFullStatusJson_; // Cached full status original JSON (content of the result field)
-        bool hasFullStatusCache_ = false;     // Whether there is a valid full status cache
     };
     /**
      * Elegoo Printer Discovery Strategy

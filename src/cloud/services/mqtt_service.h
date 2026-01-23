@@ -11,6 +11,7 @@
 #include "adapters/elegoo_fdm_cc2_message_adapter.h"
 #include "utils/process_mutex.h"
 #include <map>
+#include <nlohmann/json.hpp>
 
 namespace elink
 {
@@ -108,6 +109,7 @@ namespace elink
         struct UploadState {
             bool uploading = false;
             int progress = 0;
+            nlohmann::json cachedMachineStatus; // Cache machine_status before upload
         };
         std::map<std::string, UploadState> m_uploadStates; // key: printerId
 

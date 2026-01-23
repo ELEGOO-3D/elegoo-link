@@ -266,6 +266,7 @@ namespace elink
                     if (jsonData.contains("reportValue") && jsonData["reportValue"].is_string()) 
                     {
                         nlohmann::json data = nlohmann::json::parse(jsonData["reportValue"].get<std::string>(), nullptr, false);
+                        // payload={"pkey":"SN","deviceCode":"SN","reportValue":"{\"extruder\":{\"temperature\":90},\"meta_data\":{\"id\":1769079268809}}"}
                         
                         // Check if a file upload is in progress for this printer
                         bool isUploading = false;
@@ -277,6 +278,23 @@ namespace elink
                             {
                                 isUploading = true;
                                 uploadProgress = uploadIt->second.progress;
+                                
+                                // Merge incremental machine_status updates into cache
+                                if (data.contains("machine_status") && data["machine_status"].is_object())
+                                {
+                                    if (uploadIt->second.cachedMachineStatus.is_null())
+                                    {
+                                        // First time: cache the complete status
+                                        uploadIt->second.cachedMachineStatus = data["machine_status"];
+                                        ELEGOO_LOG_DEBUG("Initial cache of machine_status for printer {}", StringUtils::maskString(printerId));
+                                    }
+                                    else
+                                    {
+                                        // Merge incremental updates into cached status
+                                        uploadIt->second.cachedMachineStatus.update(data["machine_status"]);
+                                        ELEGOO_LOG_DEBUG("Merged incremental machine_status update for printer {}", StringUtils::maskString(printerId));
+                                    }
+                                }
                             }
                         }
 
@@ -296,11 +314,6 @@ namespace elink
                             };
                         }
                         
-                        nlohmann::json statusJson;
-                        statusJson["id"] = 0;
-                        statusJson["method"] = 6000;
-                        statusJson["result"] = data;
-
                         // Get adapter and callback function copies under lock protection
                         std::shared_ptr<IMessageAdapter> adapter;
                         EventCallback eventCallback = m_eventCallback;
@@ -311,13 +324,13 @@ namespace elink
                             {
                                 adapter = it->second;
                             }
-
                         }
                     
                         // Process the status message outside the lock
                         if (adapter) 
                         {
-                            auto printerEvent = adapter->convertToEvent(statusJson.dump());
+                            nlohmann::json statusJson = adapter->wrapStatusData(data);
+                                auto printerEvent = adapter->convertToEvent(statusJson.dump());
                             if (printerEvent.isValid() && eventCallback) 
                             {
                                 {
@@ -342,17 +355,17 @@ namespace elink
                                 }
 
                                 {
-                                    nlohmann::json sJson;
-                                    sJson["id"] = 0;
-                                    sJson["method"] = 6000;
-                                    sJson["result"] = adapter->getCachedFullStatusJson();
-                                    BizEvent event;
-                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                                    PrinterEventRawData eventData;
-                                    eventData.printerId = printerId;
-                                    eventData.rawData = sJson.dump();
-                                    event.data = eventData;
-                                    eventCallback(event);
+                                    auto statusMessage = adapter->wrapStatusData();
+                                    if (!statusMessage.empty())
+                                    {
+                                        BizEvent event;
+                                        event.method = MethodType::ON_PRINTER_EVENT_RAW;
+                                        PrinterEventRawData eventData;
+                                        eventData.printerId = printerId;
+                                        eventData.rawData = statusMessage.dump();
+                                        event.data = eventData;
+                                        eventCallback(event);
+                                    }
                                 }
                                                               
                                 // To ensure that the exception status is cleared in time, otherwise there may be a problem of continuously notifying the exception status
@@ -363,12 +376,16 @@ namespace elink
                                     data["machine_status"] = {
                                         {"exception_status",std::vector<int>{} }
                                     };
+                                    if(data.contains("meta_data"))
+                                    {
+                                        data.erase("meta_data");
+                                    }
                                 
-                                    nlohmann::json clearExceptionJson;
-                                    clearExceptionJson["id"] = 0;
-                                    clearExceptionJson["method"] = 6000;
-                                    clearExceptionJson["result"] = data;
-                                    adapter->convertToEvent(clearExceptionJson.dump());
+                                    nlohmann::json clearExceptionJson = adapter->wrapStatusData(data);
+                                    if (!clearExceptionJson.empty())
+                                    {
+                                        adapter->convertToEvent(clearExceptionJson.dump());
+                                    }
                                 }
                             }
                         }
@@ -383,40 +400,64 @@ namespace elink
                         std::string printerId = getPrinterId(printerSn);
                         int status = jsonData["onlineStatus"];
                         
-                        
-                        BizEvent event;
-                        EventCallback eventCallback;
-                        bool eventValid = false;
+                        std::shared_ptr<IMessageAdapter> adapter;
                         {
                             std::lock_guard<std::mutex> lock(m_dataMutex);
-                            auto printerIt = std::find_if(m_printers.begin(), m_printers.end(),
-                                                          [&printerSn](const PrinterInfo &p) { return p.serialNumber == printerSn; });
-                            if (printerIt != m_printers.end()) 
+                            auto it = m_messageAdapters.find(printerId);
+                            if (it != m_messageAdapters.end()) 
                             {
-                                ConnectionStatusData eventData;
-                                eventData.printerId = printerId;
-                                eventData.status = status == 1 ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
-                                event.method = MethodType::ON_CONNECTION_STATUS;
-                                event.data = eventData;
-                                eventCallback = m_eventCallback;
-                                eventValid = true;
+                                adapter = it->second;
                             }
-                        }               
-                        if (eventValid && eventCallback) 
+                        }
+
+                        if(adapter)
+                        {
+                            adapter->setConnected(status == 1);
+                        }
+                    
+                        BizEvent event;
+                        EventCallback eventCallback;
+                        {
+                            ConnectionStatusData eventData;
+                            eventData.printerId = printerId;
+                            eventData.status = status == 1 ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
+                            event.method = MethodType::ON_CONNECTION_STATUS;
+                            event.data = eventData;
+                            eventCallback = m_eventCallback;
+                        }      
+
+                        if (eventCallback) 
                         {
                             eventCallback(event);
                         }
+
                         // If disconnected, also send printer status offline event
                         if(status == 0)
                         {
                             BizEvent statusEvent;
                             statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                            PrinterStatusData printerStatusEvent(printerId);
+                            PrinterStatusData printerStatusEvent;
+                            printerStatusEvent.printerId = printerId;
                             printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
                             statusEvent.data = printerStatusEvent;
                             if (eventCallback) 
                             {
                                 eventCallback(statusEvent);
+                            }
+
+                            // Send raw event with full status if connected
+                            {
+                                auto statusMessage = adapter->wrapStatusData();
+                                if (!statusMessage.empty())
+                                {
+                                    BizEvent event;
+                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
+                                    PrinterEventRawData eventData;
+                                    eventData.printerId = printerId;
+                                    eventData.rawData = statusMessage.dump();
+                                    event.data = eventData;
+                                    eventCallback(event);
+                                }
                             }
                         }
                     }
@@ -444,7 +485,8 @@ namespace elink
                                 // this->m_cacheBindResult[printerSn] = 2; // Unbind successful
                                 BizEvent statusEvent;
                                 statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                                PrinterStatusData printerStatusEvent(printerId);
+                                PrinterStatusData printerStatusEvent;
+                                printerStatusEvent.printerId = printerId;
                                 printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
                                 statusEvent.data = printerStatusEvent;
                                 if (eventCallback) 
@@ -481,33 +523,68 @@ namespace elink
                 {
                     // Restore connection and refresh status
                     case MqttConnectionState::CONNECTED: stateStr = "Connected";
-                        {
-                            std::lock_guard<std::mutex> lock(m_dataMutex);
-                            for (const auto &[printerId, adapter] : m_messageAdapters)
-                            {
-                                adapter->sendMessageToPrinter(MethodType::GET_PRINTER_STATUS, {});
-                            }
-                            break;
-                        }
-                    case MqttConnectionState::DISCONNECTED: 
                     {
-                        stateStr = "Disconnected"; 
+                        // std::lock_guard<std::mutex> lock(m_dataMutex);
+                        // for (const auto &[printerId, adapter] : m_messageAdapters)
+                        // {
+                        //     adapter->sendMessageToPrinter(MethodType::GET_PRINTER_STATUS, {});
+                        // }
                         std::lock_guard<std::mutex> lock(m_dataMutex);
                         for (const auto &[printerId, adapter] : m_messageAdapters)
                         {
-                            adapter->clearStatusCache();
+                            adapter->resetFullStatusLastUpdateTime();
                         }
+                        break;
+                    }
+                    case MqttConnectionState::DISCONNECTED: 
+                    {
+                        stateStr = "Disconnected"; 
+                        // std::lock_guard<std::mutex> lock(m_dataMutex);
+                        // for (const auto &[printerId, adapter] : m_messageAdapters)
+                        // {
+                        //     adapter->resetFullStatusLastUpdateTime();
+                        // }
                         break;
                     }
                     case MqttConnectionState::CONNECTING: stateStr = "Connecting"; break;
                     case MqttConnectionState::RECONNECTING: stateStr = "Reconnecting"; break;
                     case MqttConnectionState::CONNECTION_LOST: 
                     {
+                        EventCallback eventCallback;
+                        {
+                            std::lock_guard<std::mutex> lock(m_eventCallbackMutex);
+                            eventCallback = m_eventCallback;
+                        }
                         stateStr = "Connection Lost"; 
                         std::lock_guard<std::mutex> lock(m_dataMutex);
                         for (const auto &[printerId, adapter] : m_messageAdapters)
                         {
-                            adapter->clearStatusCache();
+                            adapter->setConnected(false);
+
+                            BizEvent statusEvent;
+                            statusEvent.method = MethodType::ON_PRINTER_STATUS;
+                            PrinterStatusData printerStatusEvent;
+                            printerStatusEvent.printerId = printerId;
+                            printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
+                            statusEvent.data = printerStatusEvent;
+                            if (eventCallback) 
+                            {
+                                eventCallback(statusEvent);
+                            }
+                            
+                            {
+                                auto statusMessage = adapter->wrapStatusData();
+                                if (!statusMessage.empty())
+                                {
+                                    BizEvent event;
+                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
+                                    PrinterEventRawData eventData;
+                                    eventData.printerId = printerId;
+                                    eventData.rawData = statusMessage.dump();
+                                    event.data = eventData;
+                                    eventCallback(event);
+                                }
+                            }
                         }
                         break;
                     }
@@ -569,6 +646,9 @@ namespace elink
 
     void MqttService::setFileUploading(const std::string &printerId, bool uploading, int progress)
     {
+        // Save cached machine_status before clearing upload state
+        nlohmann::json cachedStatus;
+
         // Update upload status
         {
             std::lock_guard<std::mutex> lock(m_dataMutex);
@@ -579,6 +659,14 @@ namespace elink
             }
             else
             {
+                // Save cached status before erasing
+                auto uploadIt = m_uploadStates.find(printerId);
+                if (uploadIt != m_uploadStates.end() && !uploadIt->second.cachedMachineStatus.is_null())
+                {
+                    cachedStatus = uploadIt->second.cachedMachineStatus;
+                    ELEGOO_LOG_DEBUG("Restoring cached machine_status for printer {}", StringUtils::maskString(printerId));
+                }
+
                 m_uploadStates.erase(printerId);
                 ELEGOO_LOG_INFO("Cleared printer {} uploading state", StringUtils::maskString(printerId));
             }
@@ -610,14 +698,17 @@ namespace elink
             }
             else
             {
-                auto status = adapter->getCachedFullStatusJson();
-                data["machine_status"] = status["machine_status"];
+                // Use cached machine_status if available, otherwise get from adapter
+                if (!cachedStatus.is_null())
+                {
+                    data["machine_status"] = cachedStatus;
+                }
+                else
+                {
+                    auto status = adapter->getCachedFullStatusJson();
+                    data["machine_status"] = status["machine_status"];
+                }
             }
-
-            nlohmann::json statusJson;
-            statusJson["id"] = 0;
-            statusJson["method"] = 6000;
-            statusJson["result"] = data;
 
             {
                 std::lock_guard<std::mutex> lock(m_eventCallbackMutex);
@@ -627,6 +718,7 @@ namespace elink
             // Process the status message outside the lock
             if (adapter && eventCallback)
             {
+                nlohmann::json statusJson = adapter->wrapStatusData(data);
                 auto printerEvent = adapter->convertToEvent(statusJson.dump());
                 if (printerEvent.isValid())
                 {
@@ -637,17 +729,17 @@ namespace elink
                 }
 
                 {
-                    nlohmann::json sJson;
-                    sJson["id"] = 0;
-                    sJson["method"] = 6000;
-                    sJson["result"] = adapter->getCachedFullStatusJson();
-                    BizEvent event;
-                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                    PrinterEventRawData eventData;
-                    eventData.printerId = printerId;
-                    eventData.rawData = sJson.dump();
-                    event.data = eventData;
-                    eventCallback(event);
+                    auto statusMessage = adapter->wrapStatusData();
+                    if (!statusMessage.empty())
+                    {
+                        BizEvent event;
+                        event.method = MethodType::ON_PRINTER_EVENT_RAW;
+                        PrinterEventRawData eventData;
+                        eventData.printerId = printerId;
+                        eventData.rawData = statusMessage.dump();
+                        event.data = eventData;
+                        eventCallback(event);
+                    }
                 }
             }
         }

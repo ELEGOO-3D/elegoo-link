@@ -189,6 +189,9 @@ namespace elink
         // Retry logic
         void retryConnections();
 
+        // Printer status refresh
+        void refreshPrinterStatuses();
+
         // Message adapter management
         void createMessageAdapters();
         void updateServicesWithAdapters();
