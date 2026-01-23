@@ -206,7 +206,9 @@ namespace elink
         case 30010:
             outMessage = "Invalid pin Code";
             return VoidResult::Error(ELINK_ERROR_CODE::INVALID_PIN_CODE, outMessage);
-
+        case 30012:
+            outMessage = "PIN code does not match";
+            return VoidResult::Error(ELINK_ERROR_CODE::SERVER_PIN_CODE_MISMATCH, outMessage);
         default:
             outMessage = "Unknown Error";
             return VoidResult::Error(ELINK_ERROR_CODE::SERVER_UNKNOWN_ERROR, StringUtils::formatErrorMessage(serverCode));

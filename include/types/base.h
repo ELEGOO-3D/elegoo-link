@@ -57,7 +57,8 @@ namespace elink
 
         SERVER_UNAUTHORIZED = 2050, // Unauthorized access
         SERVER_FORBIDDEN = 2051,    // Forbidden access
-
+        SERVER_PIN_CODE_MISMATCH = 2052,// PIN code does not match, e.g. SN or model does not match
+        
     };
 
     
