@@ -1784,7 +1784,7 @@ namespace elink
         if (adapterIt == m_messageAdapters.end())
         {
             // return BizResult<std::string>::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer adapter not found");
-            return BizResult<std::string>::Ok(std::string{});
+            return BizResult<std::string>::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Message adapter not found for printer: " + params.printerId);
         }
 
         bool hasData = adapterIt->second->hasFullStatusCache();
