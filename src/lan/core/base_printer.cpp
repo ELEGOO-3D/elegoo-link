@@ -660,6 +660,14 @@ namespace elink
         std::chrono::milliseconds timeout)
     {
         ELEGOO_LOG_DEBUG("[{}] Request details: {}", printerInfo_.host, request.params.dump());
+
+        // Validate and set timeout
+        if (timeout.count() <= 0)
+        {
+            timeout = getDefaultTimeout();
+            ELEGOO_LOG_DEBUG("Using default timeout: {}ms", timeout.count());
+        }
+
         // Use adapter to convert standard request to printer-specific format
         PrinterBizRequest printerBizRequest = adapter_->convertRequest(
             request.method, request.params, timeout);
@@ -691,52 +699,50 @@ namespace elink
             ELEGOO_LOG_ERROR("Failed to send command for printer {}",
                              StringUtils::maskString(printerInfo_.printerId));
 
-            try
-            {
-                promise->set_value(BizResult<nlohmann::json>::Error(
-                    ELINK_ERROR_CODE::PRINTER_COMMAND_FAILED, "Failed to send command"));
-            }
-            catch (const std::future_error &)
-            {
-                // Promise already set, ignore
-            }
-
-            return future.get();
+            return BizResult<nlohmann::json>::Error(
+                ELINK_ERROR_CODE::PRINTER_COMMAND_FAILED, "Failed to send command");
         }
 
         ELEGOO_LOG_DEBUG("Command sent for printer {}, waiting for response (timeout: {}ms)",
                          StringUtils::maskString(printerInfo_.printerId), timeout.count());
 
-        // Wait for response with timeout
-        if (timeout.count() > 0)
+        // Wait for response with timeout (timeout is guaranteed > 0 at this point)
+        if (future.wait_for(timeout) == std::future_status::timeout)
         {
-            if (future.wait_for(timeout) == std::future_status::timeout)
             {
-
-                try
-                {
-                    promise->set_value(BizResult<nlohmann::json>::Error(
-                        ELINK_ERROR_CODE::OPERATION_TIMEOUT, "Request timed out after " + std::to_string(timeout.count()) +
-                                                                 " milliseconds"));
-                }
-                catch (const std::future_error &)
-                {
-                    // Promise already set
-                }
-
-                {
-                    std::lock_guard<std::mutex> lock(requestsMutex_);
-                    pendingRequests_.erase(printerBizRequest.requestId);
-                }
-
-                ELEGOO_LOG_WARN("Request {} for printer {} timed out after {}ms",
-                                printerBizRequest.requestId,
-                                StringUtils::maskString(printerInfo_.printerId),
-                                timeout.count());
+                std::lock_guard<std::mutex> lock(requestsMutex_);
+                pendingRequests_.erase(printerBizRequest.requestId);
             }
+
+            ELEGOO_LOG_WARN("Request {} for printer {} timed out after {}ms",
+                            printerBizRequest.requestId,
+                            StringUtils::maskString(printerInfo_.printerId),
+                            timeout.count());
+            return BizResult<nlohmann::json>::Error(
+                ELINK_ERROR_CODE::OPERATION_TIMEOUT, 
+                "Request timed out after " + std::to_string(timeout.count()) + " milliseconds");
         }
 
-        return future.get();
+        // Get the result
+        BizResult<nlohmann::json> r = future.get();
+
+        // Log the result for debugging
+        if (r.isSuccess())
+        {
+            ELEGOO_LOG_DEBUG("Request {} for printer {} completed successfully",
+                             printerBizRequest.requestId,
+                             StringUtils::maskString(printerInfo_.printerId));
+        }
+        else
+        {
+            ELEGOO_LOG_WARN("Request {} for printer {} failed with code {}: {}",
+                            printerBizRequest.requestId,
+                            StringUtils::maskString(printerInfo_.printerId),
+                            static_cast<int>(r.code),
+                            r.message);
+        }
+
+        return r;
     }
 
     std::shared_ptr<std::promise<BizResult<nlohmann::json>>> BasePrinter::registerPendingRequest(
@@ -924,13 +930,13 @@ namespace elink
             // Send status request
             if (adapter_)
             {
-                if(adapter_->hasFullStatusCache())
+                if (adapter_->hasFullStatusCache())
                 {
                     ELEGOO_LOG_DEBUG("Full status cache available for printer {}, skipping polling",
                                      StringUtils::maskString(printerInfo_.printerId));
                     break;
                 }
-                
+
                 ELEGOO_LOG_DEBUG("[Retry {}] Polling status for printer {}",
                                  retryCount + 1,
                                  StringUtils::maskString(printerInfo_.printerId));

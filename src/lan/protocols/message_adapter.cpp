@@ -43,12 +43,11 @@ namespace elink
 
     std::string BaseMessageAdapter::generatePrinterRequestId() const
     {
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(1000000, 9999999); // 1000000 to 9999999
-
-        auto x = dis(gen);
-        return x < 0 ? std::to_string(-x) : std::to_string(x);
+        // Use atomic counter to ensure uniqueness across all threads
+        static std::atomic<int32_t> counter{100000};
+        int32_t uniqueId = counter.fetch_add(1, std::memory_order_relaxed);
+        
+        return std::to_string(uniqueId);
     }
 
     nlohmann::json BaseMessageAdapter::parseJson(const std::string &jsonStr) const
