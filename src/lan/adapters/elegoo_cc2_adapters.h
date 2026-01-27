@@ -70,6 +70,11 @@ namespace elink
                 result = cachedFullStatusJson_;
             }
 
+            if(!hasFullStatusCache_)
+            {
+                result = nlohmann::json::object();
+            }
+            
             if (isConnected_ == false)
             {
                 if(!result.contains("machine_status"))

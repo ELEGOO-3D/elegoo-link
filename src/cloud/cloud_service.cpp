@@ -705,12 +705,8 @@ namespace elink
                 }
             }
 
-            // // Only refresh if MQTT is connected and refresh is needed
-            // if (needsRefresh && mqttConnected)
-            // {
-            //     printersToRefresh.push_back(printerInfo.printerId);
-            // }
-            if (needsRefresh)
+            // Only refresh if MQTT is connected and refresh is needed
+            if (needsRefresh && mqttConnected)
             {
                 printersToRefresh.push_back(printerInfo.printerId);
             }
@@ -762,19 +758,20 @@ namespace elink
                         }
 
                         bool currentlyConnected = adapterPtr->isConnected();
-                        adapterPtr->setConnected(onlineStatus == 1);
-                        if(eventCallback && currentlyConnected != (onlineStatus == 1))
+                        bool newlyConnected = (onlineStatus == 1);
+                        adapterPtr->setConnected(newlyConnected);
+                        if(eventCallback && currentlyConnected != newlyConnected)
                         {
                             // Notify connection status change
                             BizEvent event;
                             event.method = MethodType::ON_CONNECTION_STATUS;
                             ConnectionStatusData eventData;
                             eventData.printerId = printerId;
-                            eventData.status = (onlineStatus == 1) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
+                            eventData.status = (newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
                             event.data = eventData;
                             eventCallback(event);
 
-                            if(onlineStatus != 1)
+                            if(!newlyConnected)
                             {
                                 auto statusMessage = adapterPtr->wrapStatusData();
                                 if (!statusMessage.empty())
@@ -791,10 +788,10 @@ namespace elink
                         }
                            
 
-                        if (onlineStatus != 1)
+                        if (!newlyConnected)
                         {
                             ELEGOO_LOG_DEBUG("Printer {} is offline (status: {}), skipping status refresh", 
-                                           StringUtils::maskString(printerId), onlineStatus);
+                                           StringUtils::maskString(printerId), newlyConnected);
                             return;
                         }
 
@@ -1731,6 +1728,20 @@ namespace elink
 
     PrinterAttributesResult CloudService::getPrinterAttributes(const PrinterAttributesParams &params)
     {
+        bool mqttConnected = false;
+        {
+            std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+            if (m_mqttService)
+            {
+                mqttConnected = m_mqttService->isConnected();
+            }
+        }
+
+        if (!mqttConnected)
+        {
+            return PrinterAttributesResult::Error(ELINK_ERROR_CODE::NOT_CONNECTED_TO_SUBSERVICE, "MQTT service is not connected");
+        }
+
         VALIDATE_PRINTER_AND_RTM_SERVICE(VoidResult)
         BizRequest request;
         request.method = MethodType::GET_PRINTER_ATTRIBUTES;
@@ -1802,18 +1813,10 @@ namespace elink
             return BizResult<std::string>::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Message adapter not found for printer: " + params.printerId);
         }
 
-        bool hasData = adapterIt->second->hasFullStatusCache();
         auto cachedJson = adapterIt->second->getCachedFullStatusJson();
-        ELEGOO_LOG_DEBUG("Get cached full status for printer {}: hasData={}, json={}",
+        ELEGOO_LOG_DEBUG("Get cached full status for printer {}:  json={}",
                          StringUtils::maskString(params.printerId),
-                         hasData ? "true" : "false",
-                         hasData ? cachedJson.dump() : "N/A");
-        if (!hasData || cachedJson.empty())
-        {
-            ELEGOO_LOG_WARN("No cached full status data for printer: {}", StringUtils::maskString(params.printerId));
-            return BizResult<std::string>::Ok(std::string{"{}"});
-        }
-
+                         cachedJson.dump());
         return BizResult<std::string>::Ok(cachedJson.dump());
     }
 
@@ -1822,6 +1825,11 @@ namespace elink
         if (params.printerId.empty())
         {
             return PrinterStatusResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
+        }
+
+        if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
+        {
+            return PrinterStatusResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized: Invalid HTTP credentials");
         }
 
         BizResult<nlohmann::json> result;
