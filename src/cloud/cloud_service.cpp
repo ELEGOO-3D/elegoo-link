@@ -1798,6 +1798,10 @@ namespace elink
 
         bool hasData = adapterIt->second->hasFullStatusCache();
         auto cachedJson = adapterIt->second->getCachedFullStatusJson();
+        ELEGOO_LOG_DEBUG("Get cached full status for printer {}: hasData={}, json={}",
+                         StringUtils::maskString(params.printerId),
+                         hasData ? "true" : "false",
+                         hasData ? cachedJson.dump() : "N/A");
         if (!hasData || cachedJson.empty())
         {
             return BizResult<std::string>::Ok(std::string{});
