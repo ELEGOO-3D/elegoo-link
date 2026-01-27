@@ -1811,7 +1811,7 @@ namespace elink
         if (!hasData || cachedJson.empty())
         {
             ELEGOO_LOG_WARN("No cached full status data for printer: {}", StringUtils::maskString(params.printerId));
-            return BizResult<std::string>::Ok(std::string{});
+            return BizResult<std::string>::Ok(std::string{"{}"});
         }
 
         return BizResult<std::string>::Ok(cachedJson.dump());
