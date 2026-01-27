@@ -705,8 +705,12 @@ namespace elink
                 }
             }
 
-            // Only refresh if MQTT is connected and refresh is needed
-            if (needsRefresh && mqttConnected)
+            // // Only refresh if MQTT is connected and refresh is needed
+            // if (needsRefresh && mqttConnected)
+            // {
+            //     printersToRefresh.push_back(printerInfo.printerId);
+            // }
+            if (needsRefresh)
             {
                 printersToRefresh.push_back(printerInfo.printerId);
             }
@@ -1792,6 +1796,8 @@ namespace elink
         auto adapterIt = m_messageAdapters.find(params.printerId);
         if (adapterIt == m_messageAdapters.end())
         {
+            ELEGOO_LOG_WARN("Get cached full status for printer {} failed: adapter not found",
+                            StringUtils::maskString(params.printerId));
             // return BizResult<std::string>::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer adapter not found");
             return BizResult<std::string>::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Message adapter not found for printer: " + params.printerId);
         }
@@ -1804,6 +1810,7 @@ namespace elink
                          hasData ? cachedJson.dump() : "N/A");
         if (!hasData || cachedJson.empty())
         {
+            ELEGOO_LOG_WARN("No cached full status data for printer: {}", StringUtils::maskString(params.printerId));
             return BizResult<std::string>::Ok(std::string{});
         }
 
