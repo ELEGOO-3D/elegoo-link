@@ -94,6 +94,14 @@ namespace elink
                 m_networkConfig = config;
             }
 
+            {
+                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                m_cachedRegionParams = SetRegionParams{};
+                m_cachedRegionParams.region = config.region;
+                m_cachedRegionParams.baseUrl = config.baseApiUrl;
+                m_cachedRegionParams.caCertPath = config.caCertPath;
+                m_cachedHttpCredential = HttpCredential{};
+            }
             // Initialize services
             std::lock_guard<std::shared_mutex> servicesLock(m_servicesMutex);
 
@@ -189,6 +197,8 @@ namespace elink
                 std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
                 m_agoraCredential = nullptr;
                 m_mqttCredential = nullptr;
+                m_cachedHttpCredential = HttpCredential{};
+                m_cachedRegionParams = SetRegionParams{};
             }
 
             // Clean up upload status
@@ -433,6 +443,7 @@ namespace elink
             std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
             m_agoraCredential = nullptr;
             m_mqttCredential = nullptr;
+            m_cachedHttpCredential = HttpCredential{};
         }
 
         setOnlineStatus(false);
