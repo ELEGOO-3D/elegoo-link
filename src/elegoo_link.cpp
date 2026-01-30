@@ -6,7 +6,7 @@
 #include "utils/logger.h"
 #include "version.h"
 #include <algorithm>
-
+#include "utils/utils.h"
 namespace elink
 {
     // ========== Private Implementation Class ==========
@@ -19,6 +19,14 @@ namespace elink
         {
             cleanup();
         }
+
+        // Structure to track printer state
+        struct PrinterStateTracker
+        {
+            PrinterState lastState = PrinterState::UNKNOWN;
+            PrinterSubState lastSubState = PrinterSubState::NONE;
+            bool firstUpdate = true;
+        };
 
         bool initialize(const ElegooLink::Config &config)
         {
@@ -153,6 +161,38 @@ namespace elink
                     return 0;
                 });
 #endif
+
+            // Subscribe to PrinterStatusEvent to log state changes
+            targetBus.subscribe<PrinterStatusEvent>(
+                [this](const std::shared_ptr<PrinterStatusEvent> &event)
+                {
+                    const auto &printerId = event->status.printerId;
+                    const auto &currentState = event->status.printerStatus.state;
+                    const auto &currentSubState = event->status.printerStatus.subState;
+                    
+                    std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
+                    
+                    // Get or create state tracker for this printer
+                    auto &tracker = printerStateTrackers_[printerId];
+                    
+                    // Check if state or subState has changed
+                    if (tracker.firstUpdate || 
+                        currentState != tracker.lastState || 
+                        currentSubState != tracker.lastSubState)
+                    {
+                        ELEGOO_LOG_INFO("[Printer: {}] State changed: {} -> {}, SubState: {} -> {}",
+                            StringUtils::maskString(printerId),
+                            static_cast<int>(tracker.lastState),
+                            static_cast<int>(currentState),
+                            static_cast<int>(tracker.lastSubState),
+                            static_cast<int>(currentSubState));
+                        
+                        // Update tracker
+                        tracker.lastState = currentState;
+                        tracker.lastSubState = currentSubState;
+                        tracker.firstUpdate = false;
+                    }
+                });
         }
 
         void teardownEventForwarding()
@@ -164,6 +204,17 @@ namespace elink
             // Clear CloudService event callback
             getCloudService().setEventCallback(nullptr);
 #endif
+        }
+
+        void removePrinterStateTracker(const std::string &printerId)
+        {
+            std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
+            auto it = printerStateTrackers_.find(printerId);
+            if (it != printerStateTrackers_.end())
+            {
+                printerStateTrackers_.erase(it);
+                ELEGOO_LOG_DEBUG("Removed state tracker for printer: {}", printerId);
+            }
         }
 
         bool shouldUseNetworkService(const ConnectPrinterParams &params) const
@@ -185,6 +236,8 @@ namespace elink
     private:
         ElegooLink::Config config_;
         bool initialized_;
+        std::map<std::string, PrinterStateTracker> printerStateTrackers_; // Track state for each printer
+        std::mutex printerStateTrackersMutex_; // Protect printerStateTrackers_
     };
 
     // ========== ElegooLink Implementation ==========
@@ -316,6 +369,9 @@ namespace elink
                 ELINK_ERROR_CODE::NOT_INITIALIZED,
                 "ElegooLink is not initialized");
         }
+
+        // Remove state tracker for this printer
+        pImpl_->removePrinterStateTracker(printerId);
 
         if (pImpl_->isLocalPrinter(printerId))
         {
