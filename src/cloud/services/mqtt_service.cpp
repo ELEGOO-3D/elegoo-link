@@ -298,22 +298,21 @@ namespace elink
                             }
                         }
 
-                        // If uploading, remove machine_status and add simulated upload status
-                        if (isUploading)
+                        // Log original machine status only when not uploading
+                        if (data.contains("machine_status") && data["machine_status"].is_object())
                         {
-                            if (data.contains("machine_status"))
+                            ELEGOO_LOG_INFO("Received machine status: {}", data["machine_status"].dump());
+                            // If uploading, replace machine_status with simulated upload status
+                            if (isUploading)
                             {
-                                data.erase("machine_status");
+                                data["machine_status"] = {
+                                    {"status", 11},       // File transferring state
+                                    {"sub_status", 3000}, // File transfer sub-state
+                                    {"progress", uploadProgress}
+                                };
                             }
-                            
-                            // Add simulated upload status
-                            data["machine_status"] = {
-                                {"status", 11},
-                                {"sub_status", 3000},
-                                {"progress", uploadProgress}
-                            };
-                        }
-                        
+                        }      
+                          
                         // Get adapter and callback function copies under lock protection
                         std::shared_ptr<IMessageAdapter> adapter;
                         EventCallback eventCallback = m_eventCallback;

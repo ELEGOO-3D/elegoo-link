@@ -1514,6 +1514,7 @@ namespace elink
                     if (resultJson.contains("machine_status") && resultJson["machine_status"].is_object())
                     {
                         resultJson["machine_status"]["exception_status"] = std::vector<int>{};
+                        ELEGOO_LOG_INFO("Received machine status: {}", resultJson["machine_status"].dump());
                     }
 
                     // Add field_timestamps to result for CloudElegooFdmCC2MessageAdapter

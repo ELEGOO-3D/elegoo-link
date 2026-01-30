@@ -113,9 +113,9 @@ namespace elink
         httplib::Client client(endpoint);
         client.set_default_headers({{"User-Agent", ELEGOO_LINK_USER_AGENT},
                                     {"Accept", "application/json"}});
-        client.set_connection_timeout(60);
-        client.set_read_timeout(180);
-        client.set_write_timeout(180);
+        client.set_connection_timeout(60); // 60 seconds connection timeout
+        client.set_read_timeout(300);      // 5 minutes read timeout for LAN
+        client.set_write_timeout(300);     // 5 minutes write timeout for LAN
 
         // Prepare multipart form data
         httplib::UploadFormDataItems items = {
@@ -251,9 +251,9 @@ namespace elink
         httplib::Client client(endpoint);
         client.set_default_headers({{"User-Agent", ELEGOO_LINK_USER_AGENT},
                                     {"Accept", "application/json"}});
-        client.set_connection_timeout(60);
-        client.set_read_timeout(300); // Increased timeout for large files
-        client.set_write_timeout(300);
+        client.set_connection_timeout(60);  // 60 seconds connection timeout
+        client.set_read_timeout(600);       // 10 minutes read timeout for large files in LAN
+        client.set_write_timeout(600);      // 10 minutes write timeout for large files in LAN
 
         // Generate boundary for multipart data
         std::random_device rd;

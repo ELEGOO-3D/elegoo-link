@@ -582,7 +582,20 @@ namespace elink
                 return BizResult<HttpResponse>::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "Failed to initialize curl");
             }
 
-            m_impl->applyTimeout(curl, timeout);
+            // Apply custom timeout if provided, otherwise use low-speed timeout for large data uploads
+            if (timeout.has_value())
+            {
+                m_impl->applyTimeout(curl, timeout);
+            }
+            else
+            {
+                // For binary data upload, use low-speed timeout instead of total timeout
+                // This allows large data uploads to complete without time limit
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);  // No total timeout limit
+                curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);  // Minimum 1KB/s
+                curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);     // For 60 seconds
+            }
+            
             auto curlHeaders = m_impl->buildHeaders(headers);
 
             std::string fullUrl = path;
@@ -897,6 +910,13 @@ namespace elink
             {
                 return BizResult<HttpResponse>::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "Failed to initialize curl");
             }
+
+            // For file upload, use low-speed timeout instead of total timeout
+            // This allows large file uploads to complete without time limit,
+            // while still detecting stalled connections
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);  // No total timeout limit
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);  // Minimum 1KB/s
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);     // For 60 seconds
 
             auto curlHeaders = m_impl->buildHeaders(headers);
 

@@ -82,7 +82,9 @@ namespace elink
         httplib::Client client(endpoint);
         client.set_default_headers({{"User-Agent", ELEGOO_LINK_USER_AGENT},
                                     {"Accept", "application/json"}});
-        client.set_connection_timeout(60); // 60 seconds timeout
+        client.set_connection_timeout(60); // 60 seconds connection timeout
+        client.set_read_timeout(180);      // 3 minutes read timeout (1MB chunks in LAN)
+        client.set_write_timeout(180);     // 3 minutes write timeout (1MB chunks in LAN)
         client.set_keep_alive(true);       // Enable keep-alive
 
         while (offset < totalSize)

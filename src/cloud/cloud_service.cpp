@@ -2108,10 +2108,11 @@ namespace elink
                                                         // Because file upload is segmented: first upload, then device downloads, so this progress is half of the total
                                                         FileUploadProgressData progress;
                                                         int percentage = total > 0 ? static_cast<int>((current * 100.0) / total) : 0;
+                                                        percentage = percentage / 2;
                                                         if (percentage != oldPercentage)
                                                         {
                                                             oldPercentage = percentage;
-                                                            progress.percentage = percentage / 2;
+                                                            progress.percentage = percentage;
                                                             progress.totalBytes = total;
                                                             progress.uploadedBytes = current / 2;
                                                             progress.printerId = params.printerId;
@@ -2121,7 +2122,7 @@ namespace elink
                                                                 std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
                                                                 if (m_mqttService)
                                                                 {
-                                                                    m_mqttService->setFileUploading(params.printerId, true, percentage / 2);
+                                                                    m_mqttService->setFileUploading(params.printerId, true, percentage);
                                                                 }
                                                             }
                                                             
@@ -2179,10 +2180,10 @@ namespace elink
             }
         }
 
-        // Periodically check file upload progress, if no update for over 30 seconds, consider upload timeout/failure
+        // Periodically check file upload progress, if no update for over 60 seconds, consider upload timeout/failure
         int lastProgress = -1;
 
-        const auto timeoutDuration = std::chrono::seconds(30);
+        const auto timeoutDuration = std::chrono::seconds(60);
         const auto checkInterval = std::chrono::milliseconds(500);
         bool isTimeout = false;
         bool isComplete = false; // Set to true to enable timeout check
@@ -2242,9 +2243,9 @@ namespace elink
                 progress.printerId = params.printerId;
 
                 // Only call callback when progress changes
-                if (lastProgress != status.progress)
+                if (lastProgress != progress.percentage)
                 {
-                    lastProgress = status.progress;
+                    lastProgress = progress.percentage;
                     // Update MQTT service upload progress
                     {
                         std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
