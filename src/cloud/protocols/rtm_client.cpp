@@ -483,7 +483,7 @@ namespace elink
             agoraConfig.eventHandler = eventHandler_.get();
             agoraConfig.presenceTimeout = config_.presenceTimeout;
             agoraConfig.heartbeatInterval = config_.heartbeatInterval;
-            agoraConfig.reconnectTimeout = 1; // Set a reasonable reconnect timeout
+            agoraConfig.reconnectTimeout = 30; // Set a reasonable reconnect timeout
             agoraConfig.areaCode = RTM_AREA_CODE_GLOB;
             agoraConfig.protocolType = RTM_PROTOCOL_TYPE_TCP_UDP;
 

@@ -1513,12 +1513,12 @@ namespace elink
                                    { return p.serialNumber == serialNumber; });
             if (it == m_printers.end())
             {
+                ELEGOO_LOG_ERROR("Printer with SN {} not found for connection", StringUtils::maskString(serialNumber));
                 return ConnectPrinterResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + serialNumber);
             }
             printer = *it;
             printer.printerId = params.printerId;
         }
-        ELEGOO_LOG_INFO("Printer connected successfully: {}", StringUtils::maskString(serialNumber));
 
         ConnectPrinterResult result;
         result.data = ConnectPrinterData{true, printer};
