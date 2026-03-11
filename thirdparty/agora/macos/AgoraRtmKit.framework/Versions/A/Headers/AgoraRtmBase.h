@@ -76,7 +76,23 @@
 namespace agora {
 namespace rtm {
 
+class IRtmEventHandler;
+
 const uint32_t DEFAULT_LOG_SIZE_IN_KB = 1024;
+
+/**
+ * Rtm token event type.
+ */
+enum RTM_TOKEN_EVENT_TYPE {
+  /**
+   * The token is about to expire.
+   */
+  RTM_TOKEN_EVENT_TYPE_WILL_EXPIRE = 1,
+  /**
+   * The token read permission is revoked.
+   */
+  RTM_TOKEN_EVENT_TYPE_READ_PERMISSION_REVOKED = 2,
+};
 
 /**
  * Rtm link state.
@@ -687,6 +703,14 @@ enum RTM_ERROR_CODE {
    * -11037: The message delivered successfully but store in history failed.
    */
   RTM_ERROR_CHANNEL_MESSAGE_DELIVERED_BUT_STORE_FAILED = -11037,
+  /**
+   * -11038: The subscribe permission is denied.
+   */
+  RTM_ERROR_CHANNEL_SUBSCRIBE_PERMISSION_DENIED = -11038,
+  /**
+   * -11039: The publish permission is denied.
+   */
+  RTM_ERROR_CHANNEL_PUBLISH_PERMISSION_DENIED = -11039,
 
   /**
    * -12001 ~ -13000 : reserved for storage error.
@@ -765,6 +789,10 @@ enum RTM_ERROR_CODE {
    * -12019: The storage service not available.
    */
   RTM_ERROR_STORAGE_NOT_AVAILABLE = -12019,
+  /**
+   * -12020: The storage permission is denied.
+   */
+  RTM_ERROR_STORAGE_PERMISSION_DENIED = -12020,
 
   /**
    * -13001 ~ -14000 : reserved for presence error.
@@ -857,6 +885,10 @@ enum RTM_ERROR_CODE {
    * -14009: The lock service is not available.
    */
   RTM_ERROR_LOCK_NOT_AVAILABLE = -14009,
+  /**
+   * -14010: The lock permission is denied.
+   */
+  RTM_ERROR_LOCK_PERMISSION_DENIED = -14010,
 
   /**
    * -15001 ~ -16000 : reserved for history error.
@@ -879,6 +911,10 @@ enum RTM_ERROR_CODE {
    * -15005: The history service not available.
    */
   RTM_ERROR_HISTORY_NOT_AVAILABLE = -15005,
+  /**
+   * -15006: The history permission is denied.
+   */
+  RTM_ERROR_HISTORY_PERMISSION_DENIED = -15006,
 };
 
 /**
@@ -1071,7 +1107,7 @@ enum RTM_STORAGE_TYPE {
   /**
     0: Unknown type.
     */
-  RTM_STORAGE_TYPE_NONE = 0,
+  RTM_STORAGE_TYPE_NONE= 0,
   /**
     1: The user storage event.
     */
@@ -1089,7 +1125,7 @@ enum RTM_STORAGE_EVENT_TYPE {
   /**
     0: Unknown event type.
     */
-  RTM_STORAGE_EVENT_TYPE_NONE = 0,
+  RTM_STORAGE_EVENT_TYPE_NONE= 0,
   /**
     1: Triggered when user subscribe user metadata state or join channel with options.withMetadata = true
     */
@@ -1221,7 +1257,7 @@ enum RTM_PRESENCE_EVENT_TYPE {
   RTM_PRESENCE_EVENT_TYPE_ERROR_OUT_OF_SERVICE = 7,
 };
 
-/**
+/** 
  * Definition of LogConfiguration
  */
 struct RtmLogConfig {
@@ -1229,7 +1265,7 @@ struct RtmLogConfig {
    * The log file path, default is NULL for default log path
    */
   const char* filePath;
-  /**
+  /** 
    * The log file size, KB , set 1024KB to use default log size
    */
   uint32_t fileSizeInKB;
@@ -1428,13 +1464,13 @@ struct PresenceOptions {
 };
 
 /**
- * @brief Publish message option
- */
+  * @brief Publish message option
+  */
 struct PublishOptions {
   /**
    * The channel type.
    */
-  RTM_CHANNEL_TYPE channelType;
+  RTM_CHANNEL_TYPE channelType;  
   /**
    * The message type.
    */
@@ -1632,6 +1668,137 @@ struct HistoryMessage {
                      messageLength(0),
                      customType(NULL),
                      timestamp(0) {}
+};
+
+/**
+ *  Configurations for RTM Client.
+ */
+struct RtmConfig {
+  /**
+   * The App ID of your project.
+   */
+  const char* appId;
+
+  /**
+   * The ID of the user.
+   */
+  const char* userId;
+
+  /**
+   * The region for connection. This advanced feature applies to scenarios that
+   * have regional restrictions.
+   *
+   * For the regions that Agora supports, see #AREA_CODE.
+   *
+   * After specifying the region, the SDK connects to the Agora servers within
+   * that region.
+   */
+  RTM_AREA_CODE areaCode;
+
+  /**
+   * The protocol used for connecting to the Agora RTM service.
+   */
+  RTM_PROTOCOL_TYPE protocolType;
+
+  /**
+   * Presence timeout in seconds, specify the timeout value when you lost connection between sdk
+   * and rtm service.
+   */
+  uint32_t presenceTimeout;
+
+  /**
+   * Heartbeat interval in seconds, specify the interval value of sending heartbeat between sdk
+   * and rtm service.
+   */
+  uint32_t heartbeatInterval;
+
+  /**
+   * - For Android, it is the context of Activity or Application.
+   * - For Windows, it is the window handle of app. Once set, this parameter enables you to plug
+   * or unplug the video devices while they are powered.
+   */
+  void* context;
+
+  /**
+   * Reconnection timeout in seconds, specify the timeout value for login and reconnection operations.
+   *
+   * Timeout behavior and callbacks:
+   * - Login timeout: Triggers onLoginResult and onLinkStateChanged
+   * - Reconnection timeout: Triggers onLinkStateChanged
+   *
+   * Default: 0 seconds, never timeout, keep retrying.
+   * Range: [15, 3600]
+   */
+  uint32_t reconnectTimeout;
+
+  /**
+   * Whether to use String user IDs, if you are using RTC products with Int user IDs,
+   * set this value as 'false'. Otherwise errors might occur.
+   */
+  bool useStringUserId;
+
+  /**
+   * Whether to enable multipath, introduced from 2.2.0, for now , only effect on stream channel.
+   */
+  bool multipath;
+
+  /**
+   * iot devices may be restricted by isp, need to enable this feature to connect to server by domain.
+   * -true: connect to servers restricted by isp
+   * -false: (Default) connect to servers with no limit
+   */
+  bool ispPolicyEnabled;
+
+  /**
+   * The callbacks handler
+   */
+  IRtmEventHandler* eventHandler;
+
+  /**
+   * The config for customer set log path, log size and log level.
+   */
+  RtmLogConfig logConfig;
+
+  /**
+   * The config for proxy setting
+   */
+  RtmProxyConfig proxyConfig;
+
+  /**
+   * The config for encryption setting
+   */
+  RtmEncryptionConfig  encryptionConfig;
+
+  /**
+   * The config for private setting
+   */
+  RtmPrivateConfig privateConfig;
+
+  RtmConfig() : appId(NULL),
+                userId(NULL),
+                areaCode(RTM_AREA_CODE_GLOB),
+                protocolType(RTM_PROTOCOL_TYPE_TCP_UDP),
+                presenceTimeout(300),
+                heartbeatInterval(5),
+                context(NULL),
+                reconnectTimeout(0),
+                useStringUserId(true),
+                multipath(false),
+                ispPolicyEnabled(false),
+                eventHandler(NULL) {}
+};
+
+struct ChannelList {
+  const char** channels;
+  size_t channelCount;
+
+  ChannelList() : channels(NULL), channelCount(0) {}
+};
+
+struct AffectedResources {
+  ChannelList messageChannels;
+
+  AffectedResources() : messageChannels() {}
 };
 
 }  // namespace rtm

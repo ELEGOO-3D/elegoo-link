@@ -32,7 +32,21 @@ typedef NS_OPTIONS(NSUInteger, AgoraRtmAreaCode) {
    * (Default) Global.
    */
   AgoraRtmAreaCodeGLOB = (0xFFFFFFFF)
-};  
+};
+
+/**
+ * Rtm token event type.
+ */
+typedef NS_ENUM(NSInteger, AgoraRtmTokenEventTokenType) {
+  /**
+   * The token is about to expire.
+   */
+  AgoraRtmTokenEventTokenTypeWillExpire = 1,
+  /**
+   * The token read permission is revoked.
+   */
+  AgoraRtmTokenEventTokenTypeReadPermissionRevoked = 2,
+};
 
 /**
  * The encryption mode.
@@ -319,8 +333,8 @@ typedef NS_ENUM(NSInteger, AgoraRtmErrorCode) {
   /**
    * -11033: The destination user of publish message is offline.
    */
-  AgoraRtmErrorChannelReceiverOffline = -11033,
-  /**
+   AgoraRtmErrorChannelReceiverOffline = -11033,
+   /**
    * -11034: The channel join operation is canceled.
    */
   AgoraRtmErrorChannelJoinCanceled = -11034,
@@ -336,6 +350,14 @@ typedef NS_ENUM(NSInteger, AgoraRtmErrorCode) {
    * -11037: The message delivered successfully but store in history failed.
    */
   AgoraRtmErrorChannelMessageDeliveredButStoreFailed = -11037,
+  /**
+   * -11038: The subscribe permission is denied.
+   */
+  AgoraRtmErrorChannelSubscribePermissionDenied = -11038,
+  /**
+   * -11039: The publish permission is denied.
+   */
+  AgoraRtmErrorChannelPublishPermissionDenied = -11039,
 
   /**
    * -12001 ~ -13000 : reserved for storage error.
@@ -414,6 +436,10 @@ typedef NS_ENUM(NSInteger, AgoraRtmErrorCode) {
    * -12019: The storage service not available.
    */
   AgoraRtmErrorStorageNotAvailable = -12019,
+  /**
+   * -12020: The storage permission is denied.
+   */
+  AgoraRtmErrorStoragePermissionDenied = -12020,
 
   /**
    * -13001 ~ -14000 : reserved for presence error.
@@ -527,6 +553,10 @@ typedef NS_ENUM(NSInteger, AgoraRtmErrorCode) {
    * -15005: The history service is not available.
    */
   AgoraRtmErrorHistoryNotAvailable = -15005,
+  /**
+   * -15006: The history permission is denied.
+   */
+  AgoraRtmErrorHistoryPermissionDenied = -15006,
 };
 
 /**

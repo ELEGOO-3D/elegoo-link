@@ -61,6 +61,14 @@
 - (void)rtmKit:(AgoraRtmClientKit * _Nonnull)rtmKit
     didReceiveTopicEvent:(AgoraRtmTopicEvent * _Nonnull)event NS_SWIFT_NAME(rtmKit(_:didReceiveTopicEvent:));
 
+/**
+   * Occurs when receive token event.alignof
+   *
+   * @param rtmKit the AgoraRtmClientKit Object.
+   * @param event details of token event.
+   */
+- (void)rtmKit:(AgoraRtmClientKit * _Nonnull)rtmKit
+    didReceiveTokenEvent:(AgoraRtmTokenEvent * _Nonnull)event NS_SWIFT_NAME(rtmKit(_:didReceiveTokenEvent:));
   /**
    * Occurs when token will expire in 30 seconds.
    *
@@ -163,6 +171,7 @@ __attribute__((visibility("default"))) @interface AgoraRtmClientKit : NSObject
    * - return NULL if error occurred
    */
 - (AgoraRtmHistory* _Nullable) getHistory NS_SWIFT_NAME(getHistory());
+
 /**
    * Renews the token. Once a token is enabled and used, it expires after a certain period of time.
    * You should generate a new token on your server, call this method to renew it.

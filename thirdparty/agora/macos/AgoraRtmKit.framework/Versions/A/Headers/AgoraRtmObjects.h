@@ -15,7 +15,7 @@
 @class AgoraRtmTopicMessageOptions;
 @class AgoraRtmLock;
 @class AgoraRtmStorage;
-@class AgoraRtmPresence;   
+@class AgoraRtmPresence;
 @class AgoraRtmMetadataOptions;
 @class AgoraRtmMetadataItem;
 @class AgoraRtmMetadata;
@@ -28,6 +28,7 @@
 @class AgoraRtmLockEvent;
 @class AgoraRtmStorageEvent;
 @class AgoraRtmPresenceEvent;
+@class AgoraRtmTokenEvent;
 @class AgoraRtmLogConfig;
 @class AgoraRtmProxyConfig;
 @class AgoraRtmEncryptionConfig;
@@ -50,6 +51,7 @@
 @class AgoraRtmGetHistoryMessagesOptions;
 @class AgoraRtmHistoryMessage;
 @class AgoraRtmGetHistoryMessagesResponse;
+@class AgoraRtmAffectedResources;
 
 __attribute__((visibility("default"))) @interface AgoraRtmPublishOptions: NSObject
 /**
@@ -439,9 +441,9 @@ __attribute__((visibility("default"))) @interface AgoraRtmJoinChannelOption: NSO
 
 __attribute__((visibility("default"))) @interface AgoraRtmMessageEvent: NSObject
 
-  /**
-   * Which channel type
-   */
+    /**
+     * Which channel type
+     */
 @property (nonatomic, assign) AgoraRtmChannelType channelType;
   /**
    * The channel to which the message was published
@@ -556,6 +558,36 @@ __attribute__((visibility("default"))) @interface AgoraRtmPresenceEvent: NSObjec
 @property (nonatomic, assign) unsigned long long timestamp;
 @end
 
+__attribute__((visibility("default"))) @interface AgoraRtmTokenEvent: NSObject
+/**
+ * The type of token event
+ */
+@property (nonatomic, assign) AgoraRtmTokenEventTokenType eventType;
+
+/**
+ *  The reason of the token event, description of token event type
+ */
+@property (nonatomic, copy, nonnull) NSString * reason;
+
+/**
+ * The affected resources
+ */
+@property (nonatomic, copy, nonnull) AgoraRtmAffectedResources * affectedResources;
+
+/**
+ * RTM server UTC time
+*/
+@property (nonatomic, assign) unsigned long long timestamp;
+@end
+
+__attribute__((visibility("default"))) @interface AgoraRtmAffectedResources: NSObject
+
+/**
+ * The message channels
+ */
+@property (nonatomic, copy, nonnull) NSArray<NSString *> * messageChannels;
+@end
+
 /**
  *  Configurations for RTM Client.
  */
@@ -594,6 +626,11 @@ __attribute__((visibility("default"))) @interface AgoraRtmClientConfig: NSObject
  * and rtm service.
  */
 @property (nonatomic, assign) unsigned int heartbeatInterval;
+
+/**
+ * Reconnection timeout in seconds, specify the timeout value for login and reconnection operations.
+ */
+@property (nonatomic, assign) unsigned int reconnectTimeout;
 
 /**
  * The App ID of your project.
@@ -642,6 +679,13 @@ __attribute__((visibility("default"))) @interface AgoraRtmClientConfig: NSObject
  * The config for private setting
  */
 @property (nonatomic, copy, nullable) AgoraRtmPrivateConfig * privateConfig;
+
+/**
+ * The callback queue
+ * - If nil, the callback will be called on the main thread
+ * - If not nil, the callback will be called on the specified queue
+ */
+@property (nonatomic, strong, nullable) dispatch_queue_t callbackQueue;
 @end
 
 __attribute__((visibility("default"))) @interface AgoraRtmErrorInfo: NSError
@@ -764,7 +808,7 @@ __attribute__((visibility("default"))) @interface AgoraRtmCommonResponse: NSObje
 
 __attribute__((visibility("default"))) @interface AgoraRtmMessage: NSObject <NSCopying>
 
-/**   
+/**
  * if rawData is nil read data from stringData
 */
 @property (nonatomic, copy, nullable) NSData* rawData;
@@ -899,6 +943,7 @@ __attribute__((visibility("default"))) @interface AgoraRtmGetHistoryMessagesResp
  */
 @property (nonatomic, assign) unsigned long long newStart;
 @end
+
 
 
 typedef void (^AgoraRtmTopicSubscriptionBlock)(AgoraRtmTopicSubscriptionResponse* _Nullable response, AgoraRtmErrorInfo* _Nullable errorInfo);
