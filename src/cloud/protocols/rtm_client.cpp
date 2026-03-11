@@ -30,8 +30,8 @@ namespace elink
         void resetConnectionState()
         {
             std::lock_guard<std::mutex> lock(connectionMutex_);
-            currentConnectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
-            currentConnectionChangeReason_ = RTM_CONNECTION_CHANGE_REASON(0);
+            currentConnectionState_ = RTM_LINK_STATE_DISCONNECTED;
+            currentConnectionChangeReason_ = RTM_LINK_STATE_CHANGE_REASON_UNKNOWN;
             connectionCompleted_ = false;
         }
         void resetLoginState()
@@ -133,7 +133,7 @@ namespace elink
         }
 
         // Wait for login result
-        VoidResult waitForLoginResult(uint64_t requestId, int timeoutSeconds = 10)
+        VoidResult waitForLoginResult(uint64_t requestId, int timeoutSeconds = 30)
         {
             std::unique_lock<std::mutex> lock(loginMutex_);
             pendingLoginRequestId_ = requestId;
@@ -150,7 +150,7 @@ namespace elink
         }
 
         // Wait for connection state change
-        bool waitForConnectionState(RTM_CONNECTION_STATE expectedState, int timeoutSeconds = 10)
+        bool waitForConnectionState(RTM_LINK_STATE expectedState, int timeoutSeconds = 30)
         {
             std::unique_lock<std::mutex> lock(connectionMutex_);
 
@@ -169,13 +169,13 @@ namespace elink
         }
 
         // Get current connection change reason
-        RTM_CONNECTION_CHANGE_REASON getCurrentConnectionChangeReason() const
+        RTM_LINK_STATE_CHANGE_REASON getCurrentConnectionChangeReason() const
         {
             std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(connectionMutex_));
             return currentConnectionChangeReason_;
         }
 
-        RTM_CONNECTION_STATE getCurrentConnectionState() const
+        RTM_LINK_STATE getCurrentConnectionState() const
         {
             std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(connectionMutex_));
             return currentConnectionState_;
@@ -250,19 +250,46 @@ namespace elink
             return VoidResult::Error(ELINK_ERROR_CODE::OPERATION_TIMEOUT, "Publish timeout");
         }
 
-        // Connection state change event
-        void onConnectionStateChanged(const char *channelName, RTM_CONNECTION_STATE state, RTM_CONNECTION_CHANGE_REASON reason) override
+        // Connection state change event (replaces deprecated onConnectionStateChanged)
+        void onLinkStateEvent(const LinkStateEvent &event) override
         {
             {
                 std::lock_guard<std::mutex> lock(connectionMutex_);
-                currentConnectionState_ = state;
-                currentConnectionChangeReason_ = reason;
+                currentConnectionState_ = event.currentState;
+                currentConnectionChangeReason_ = event.reasonCode;
                 connectionCompleted_ = true;
             }
             connectionCondition_.notify_all();
 
-            ELEGOO_LOG_DEBUG("[RTM] Connection state changed to: {}, reason: {}",
-                             static_cast<int>(state), static_cast<int>(reason));
+            // Build affected channels string
+            std::string affectedChannelsStr;
+            for (size_t i = 0; i < event.affectedChannelCount; ++i)
+            {
+                if (i > 0) affectedChannelsStr += ", ";
+                if (event.affectedChannels[i]) affectedChannelsStr += event.affectedChannels[i];
+            }
+
+            // Build unrestored channels string
+            std::string unrestoredChannelsStr;
+            for (size_t i = 0; i < event.unrestoredChannelCount; ++i)
+            {
+                if (i > 0) unrestoredChannelsStr += ", ";
+                if (event.unrestoredChannels[i]) unrestoredChannelsStr += event.unrestoredChannels[i];
+            }
+
+            ELEGOO_LOG_INFO(
+                "[RTM] Link state event: {} -> {}, serviceType={}, operation={}, reasonCode={}, reason={}, "
+                "isResumed={}, affectedChannels=[{}], unrestoredChannels=[{}], timestamp={}",
+                static_cast<int>(event.previousState),
+                static_cast<int>(event.currentState),
+                static_cast<int>(event.serviceType),
+                static_cast<int>(event.operation),
+                static_cast<int>(event.reasonCode),
+                event.reason ? event.reason : "",
+                event.isResumed,
+                affectedChannelsStr,
+                unrestoredChannelsStr,
+                event.timestamp);
 
             // Call connection state callback
             RtmConnectionStateCallback connectionStateCallback;
@@ -273,7 +300,7 @@ namespace elink
 
             if (connectionStateCallback)
             {
-                connectionStateCallback(state, reason);
+                connectionStateCallback(event.currentState, event.reasonCode);
             }
         }
 
@@ -347,7 +374,7 @@ namespace elink
             if (errorCode == RTM_ERROR_NOT_CONNECTED)
             {
                 std::lock_guard<std::mutex> lock(connectionMutex_);
-                currentConnectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
+                currentConnectionState_ = RTM_LINK_STATE_DISCONNECTED;
             }
         }
 
@@ -383,8 +410,8 @@ namespace elink
         std::mutex connectionMutex_;
         std::condition_variable connectionCondition_;
         bool connectionCompleted_ = false;
-        RTM_CONNECTION_STATE currentConnectionState_ = RTM_CONNECTION_STATE_DISCONNECTED;
-        RTM_CONNECTION_CHANGE_REASON currentConnectionChangeReason_ = RTM_CONNECTION_CHANGE_REASON(0);
+        RTM_LINK_STATE currentConnectionState_ = RTM_LINK_STATE_DISCONNECTED;
+        RTM_LINK_STATE_CHANGE_REASON currentConnectionChangeReason_ = RTM_LINK_STATE_CHANGE_REASON_UNKNOWN;
 
         // State structures for concurrent requests
         struct SubscribeState
@@ -456,9 +483,16 @@ namespace elink
             agoraConfig.eventHandler = eventHandler_.get();
             agoraConfig.presenceTimeout = config_.presenceTimeout;
             agoraConfig.heartbeatInterval = config_.heartbeatInterval;
+            agoraConfig.reconnectTimeout = 1; // Set a reasonable reconnect timeout
             agoraConfig.areaCode = RTM_AREA_CODE_GLOB;
             agoraConfig.protocolType = RTM_PROTOCOL_TYPE_TCP_UDP;
 
+            agoraConfig.logConfig.fileSizeInKB = 2 * 1024; // Set default log size to 2 MB
+            if (!config_.logFilePath.empty())
+            {
+                agoraConfig.logConfig.filePath = config_.logFilePath.c_str();
+                ELEGOO_LOG_DEBUG("[RTM] Log file path: {}", config_.logFilePath);
+            }
             // Create RTM client
             int errorCode = 0;
             rtmClient_ = createAgoraRtmClient(agoraConfig, errorCode);
@@ -520,7 +554,7 @@ namespace elink
                 return VoidResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "RTM client not initialized");
             }
 
-            if (isLoggedIn_ && eventHandler_->getCurrentConnectionState() == RTM_CONNECTION_STATE_CONNECTED)
+            if (isLoggedIn_ && eventHandler_->getCurrentConnectionState() == RTM_LINK_STATE_CONNECTED)
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Already logged in");
             }
@@ -559,7 +593,7 @@ namespace elink
             if (loginResult.isSuccess())
             {
                 // Login successful, wait for connection state to change to connected
-                if (eventHandler_->waitForConnectionState(RTM_CONNECTION_STATE_CONNECTED))
+                if (eventHandler_->waitForConnectionState(RTM_LINK_STATE_CONNECTED))
                 {
                     {
                         std::unique_lock<std::shared_mutex> lock(stateMutex_);
@@ -590,7 +624,7 @@ namespace elink
     bool RtmClient::isOnline() const
     {
         std::shared_lock<std::shared_mutex> lock(stateMutex_);
-        return isLoggedIn_ && eventHandler_->getCurrentConnectionState() == RTM_CONNECTION_STATE_CONNECTED;
+        return isLoggedIn_ && eventHandler_->getCurrentConnectionState() == RTM_LINK_STATE_CONNECTED;
     }
 
     VoidResult RtmClient::logout()
@@ -838,7 +872,7 @@ namespace elink
                 return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Not logged in");
             }
 
-            if (eventHandler_->getCurrentConnectionState() != RTM_CONNECTION_STATE_CONNECTED)
+            if (eventHandler_->getCurrentConnectionState() != RTM_LINK_STATE_CONNECTED)
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "RTM client not connected");
             }

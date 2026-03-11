@@ -122,6 +122,10 @@ namespace elink
             }
 
             // Initialize RTM service
+            if (!config.rtmLogPath.empty())
+            {
+                m_rtmService->setLogPath(config.rtmLogPath);
+            }
             auto rtmResult = m_rtmService->initialize();
             if (!rtmResult.isSuccess())
             {

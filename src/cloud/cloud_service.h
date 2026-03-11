@@ -38,6 +38,7 @@ namespace elink
             std::string baseApiUrl;    // Base API URL, e.g. "https://api.elegoo.com", if empty, will use default
             std::string userAgent;     // User-Agent string
             std::string caCertPath;    // CA certificate path for SSL/TLS verification
+            std::string rtmLogPath;    // Agora RTM SDK log file path (empty = SDK default)
         };
 
         using FileUploadProgressCallback = std::function<bool(const FileUploadProgressData &progress)>;

@@ -83,6 +83,11 @@ namespace elink
         return m_initialized.load();
     }
 
+    void RtmService::setLogPath(const std::string &logPath)
+    {
+        m_rtmLogPath = logPath;
+    }
+
     VoidResult RtmService::connect(const AgoraCredential &credential)
     {
         // Check if there are valid Agora credentials
@@ -105,6 +110,7 @@ namespace elink
             config.appId = AGORA_APP_ID;
             config.userId = credential.rtmUserId;
             config.token = credential.rtmToken;
+            config.logFilePath = m_rtmLogPath;
 
             // RTM client operations require locking
             {
@@ -562,10 +568,10 @@ namespace elink
 
         m_rtmClient->setConnectionStateCallback([this](RtmConnectionState state, RtmConnectionChangeReason reason)
                                                 {
-            ELEGOO_LOG_INFO("RTM connection state changed: state={}, reason={}", static_cast<int>(state), static_cast<int>(reason));
+            // ELEGOO_LOG_INFO("RTM connection state changed: state={}, reason={}", static_cast<int>(state), static_cast<int>(reason));
             
             // Check if connected
-            bool isConnected = (state == agora::rtm::RTM_CONNECTION_STATE::RTM_CONNECTION_STATE_CONNECTED);
+            bool isConnected = (state == agora::rtm::RTM_LINK_STATE::RTM_LINK_STATE_CONNECTED);
             
             // Trigger connection state callback
             {
@@ -577,8 +583,7 @@ namespace elink
             }
             
             // Handle same UID login case
-            if (state == agora::rtm::RTM_CONNECTION_STATE::RTM_CONNECTION_STATE_FAILED && 
-                reason == agora::rtm::RTM_CONNECTION_CHANGE_REASON::RTM_CONNECTION_CHANGED_SAME_UID_LOGIN)
+            if (reason == agora::rtm::RTM_LINK_STATE_CHANGE_REASON::RTM_LINK_STATE_CHANGE_REASON_SAME_UID_LOGIN)
             {
                 ELEGOO_LOG_WARN("RTM connection failed due to same UID login from another device");
                 m_isLoginOtherDevice.store(true);

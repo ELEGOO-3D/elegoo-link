@@ -39,6 +39,7 @@ namespace elink
         std::string caCertPath;    // CA certificate path for SSL/TLS verification
         std::string userAgent;     // User-Agent string
         std::string staticWebPath; // Static web files path
+        std::string rtmLogPath;    // Agora RTM SDK log file path (empty = SDK default)
     };
 #endif // ENABLE_CLOUD_FEATURES
 

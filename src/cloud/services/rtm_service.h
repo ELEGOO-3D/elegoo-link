@@ -42,6 +42,8 @@ namespace elink
         void cleanup();
         bool isInitialized() const;
 
+        void setLogPath(const std::string &logPath);
+
         // Connection management
         VoidResult connect(const AgoraCredential &credential);
         void disconnect();
@@ -274,6 +276,8 @@ namespace elink
         // Cached credential information - protected by independent lock
         AgoraCredential m_cachedCredential;
         mutable std::mutex m_credentialMutex;
+
+        std::string m_rtmLogPath; // Agora RTM SDK log file path
 
         // RTM constants
         static constexpr int SUBSCRIBE_DELAY_MS = 5000; // Subscription interval delay

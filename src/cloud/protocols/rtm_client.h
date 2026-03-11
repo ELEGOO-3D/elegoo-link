@@ -37,11 +37,14 @@ namespace elink
         // Connection configuration
         int presenceTimeout = 300;  // Presence timeout (seconds)
         int heartbeatInterval = 30; // Heartbeat interval (seconds)
+
+        // Logging
+        std::string logFilePath;    // Agora RTM SDK log file path (empty = SDK default)
     };
 
-    // Directly use RTM SDK's enumeration types
-    using RtmConnectionState = agora::rtm::RTM_CONNECTION_STATE;
-    using RtmConnectionChangeReason = agora::rtm::RTM_CONNECTION_CHANGE_REASON;
+    // Directly use RTM SDK's enumeration types (new API: RTM_LINK_STATE replaces deprecated RTM_CONNECTION_STATE)
+    using RtmConnectionState = agora::rtm::RTM_LINK_STATE;
+    using RtmConnectionChangeReason = agora::rtm::RTM_LINK_STATE_CHANGE_REASON;
 
     /**
      * RTM callback function type definitions

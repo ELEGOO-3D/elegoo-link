@@ -930,7 +930,7 @@ namespace elink
                 if (jsonResponse.contains("data") && jsonResponse["data"].is_object())
                 {
                     int onlineStatus = JsonUtils::safeGetInt(jsonResponse["data"], "onlineStatus", 0);
-                    ELEGOO_LOG_INFO("Device online status retrieved successfully: {}", onlineStatus);
+                    ELEGOO_LOG_INFO("[{}]Device online status retrieved successfully: {}", StringUtils::maskString(serialNumber), onlineStatus);
                     return BizResult<int>::Ok(onlineStatus);
                 }
                 else

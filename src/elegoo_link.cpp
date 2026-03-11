@@ -23,7 +23,7 @@ namespace elink
         // Structure to track printer state
         struct PrinterStateTracker
         {
-            PrinterState lastState = PrinterState::UNKNOWN;
+            PrinterState lastState = PrinterState::OFFLINE;
             PrinterSubState lastSubState = PrinterSubState::NONE;
             bool firstUpdate = true;
         };
@@ -67,6 +67,7 @@ namespace elink
             netConfig.baseApiUrl = config.cloud.baseApiUrl;
             netConfig.userAgent = config.cloud.userAgent;
             netConfig.caCertPath = config.cloud.caCertPath;
+            netConfig.rtmLogPath = config.cloud.rtmLogPath;
             auto result = getCloudService().initialize(netConfig);
             if (result.isSuccess())
             {
