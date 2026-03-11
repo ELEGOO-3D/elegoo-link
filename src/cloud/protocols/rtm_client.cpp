@@ -133,7 +133,7 @@ namespace elink
         }
 
         // Wait for login result
-        VoidResult waitForLoginResult(uint64_t requestId, int timeoutSeconds = 30)
+        VoidResult waitForLoginResult(uint64_t requestId, int timeoutSeconds = 15)
         {
             std::unique_lock<std::mutex> lock(loginMutex_);
             pendingLoginRequestId_ = requestId;
@@ -150,7 +150,7 @@ namespace elink
         }
 
         // Wait for connection state change
-        bool waitForConnectionState(RTM_LINK_STATE expectedState, int timeoutSeconds = 30)
+        bool waitForConnectionState(RTM_LINK_STATE expectedState, int timeoutSeconds = 15)
         {
             std::unique_lock<std::mutex> lock(connectionMutex_);
 
@@ -483,7 +483,7 @@ namespace elink
             agoraConfig.eventHandler = eventHandler_.get();
             agoraConfig.presenceTimeout = config_.presenceTimeout;
             agoraConfig.heartbeatInterval = config_.heartbeatInterval;
-            agoraConfig.reconnectTimeout = 30; // Set a reasonable reconnect timeout
+            agoraConfig.reconnectTimeout = 15; // Set a reasonable reconnect timeout
             agoraConfig.areaCode = RTM_AREA_CODE_GLOB;
             agoraConfig.protocolType = RTM_PROTOCOL_TYPE_TCP_UDP;
 

@@ -35,7 +35,7 @@ namespace elink
         bool cleanStart = true;         // Clean start
           
         // Connection configuration
-        int connectTimeoutMs = 10000;   // Connection timeout (milliseconds)
+        int connectTimeoutMs = 15000;   // Connection timeout (milliseconds)
         int maxReconnectInterval = 10;  // Maximum reconnection interval (seconds)
         bool enableAutoReconnect = false;// Whether to enable auto-reconnection
 
