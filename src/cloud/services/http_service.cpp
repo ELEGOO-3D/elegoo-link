@@ -1457,6 +1457,18 @@ namespace elink
                                 {
                                     subObject[linkKey] = reportValue;
                                 }
+                                else if (key == "print_status" && (linkKey == "uuid" || linkKey == "filename" || linkKey == "state"))
+                                {
+                                    subObject[linkKey] = reportValue;
+                                }
+                                else if (key == "tool_head" && linkKey == "homed_axes")
+                                {
+                                    subObject[linkKey] = reportValue;
+                                }
+                                else if (key == "mono_filament_info" && (linkKey == "brand" || linkKey == "filament_type" || linkKey == "filament_name" || linkKey == "filament_code" || linkKey == "filament_color"))
+                                {
+                                    subObject[linkKey] = reportValue;
+                                }
                                 else if (!linkKey.empty())
                                 {
                                     // Try to parse reportValue as JSON object, if fails then treat as string
