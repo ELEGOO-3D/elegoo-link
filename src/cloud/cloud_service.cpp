@@ -805,7 +805,7 @@ namespace elink
 
                         if (!newlyConnected)
                         {
-                            ELEGOO_LOG_DEBUG("Printer {} is offline (status: {}), skipping status refresh", 
+                            ELEGOO_LOG_INFO("Printer {} is offline (status: {}), skipping status refresh", 
                                            StringUtils::maskString(printerId), newlyConnected);
                             return;
                         }
@@ -1515,6 +1515,12 @@ namespace elink
             {
                 ELEGOO_LOG_ERROR("Printer with SN {} not found for connection", StringUtils::maskString(serialNumber));
                 return ConnectPrinterResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + serialNumber);
+            }
+            auto adapterIt = m_messageAdapters.find(it->printerId);
+            if (adapterIt != m_messageAdapters.end() && !adapterIt->second->isConnected())
+            {
+                ELEGOO_LOG_WARN("Printer with SN {} is offline, cannot connect", StringUtils::maskString(serialNumber));
+                return ConnectPrinterResult::Error(ELINK_ERROR_CODE::PRINTER_OFFLINE, "Printer is offline: " + serialNumber);
             }
             printer = *it;
             printer.printerId = params.printerId;
