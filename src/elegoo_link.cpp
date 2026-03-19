@@ -173,9 +173,13 @@ namespace elink
                     
                     std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
                     
+                    if(printerStateTrackers_.find(printerId) == printerStateTrackers_.end())
+                    {
+                        return;
+                    }
+
                     // Get or create state tracker for this printer
                     auto &tracker = printerStateTrackers_[printerId];
-                    
                     // Check if state or subState has changed
                     if (tracker.firstUpdate || 
                         currentState != tracker.lastState || 
@@ -215,6 +219,16 @@ namespace elink
             {
                 printerStateTrackers_.erase(it);
                 ELEGOO_LOG_DEBUG("Removed state tracker for printer: {}", printerId);
+            }
+        }
+
+        void createPrinterStateTrackerIfNeeded(const std::string &printerId)
+        {
+            std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
+            if (printerStateTrackers_.find(printerId) == printerStateTrackers_.end())
+            {
+                printerStateTrackers_[printerId] = PrinterStateTracker();
+                ELEGOO_LOG_DEBUG("Created state tracker for printer: {}", printerId);
             }
         }
 
@@ -346,6 +360,7 @@ namespace elink
                 ELINK_ERROR_CODE::NOT_INITIALIZED,
                 "ElegooLink is not initialized");
         }
+        pImpl_->createPrinterStateTrackerIfNeeded(params.printerId);
         if (pImpl_->shouldUseNetworkService(params))
         {
 #ifdef ENABLE_CLOUD_FEATURES
