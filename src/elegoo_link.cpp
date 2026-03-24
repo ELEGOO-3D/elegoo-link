@@ -185,13 +185,20 @@ namespace elink
                         currentState != tracker.lastState || 
                         currentSubState != tracker.lastSubState)
                     {
-                        ELEGOO_LOG_INFO("[Printer: {}] State changed: {} -> {}, SubState: {} -> {}",
-                            StringUtils::maskString(printerId),
-                            static_cast<int>(tracker.lastState),
-                            static_cast<int>(currentState),
-                            static_cast<int>(tracker.lastSubState),
-                            static_cast<int>(currentSubState));
-                        
+                        if(!tracker.firstUpdate)
+                        {
+                            ELEGOO_LOG_INFO("[Printer: {}] State changed: {} -> {}, SubState: {} -> {}",
+                                StringUtils::maskString(printerId),
+                                static_cast<int>(tracker.lastState),
+                                static_cast<int>(currentState),
+                                static_cast<int>(tracker.lastSubState),
+                                static_cast<int>(currentSubState));
+                        }else{
+                            ELEGOO_LOG_INFO("[Printer: {}] Initial state: {}, SubState: {}",
+                                StringUtils::maskString(printerId),
+                                static_cast<int>(currentState),
+                                static_cast<int>(currentSubState));
+                        }
                         // Update tracker
                         tracker.lastState = currentState;
                         tracker.lastSubState = currentSubState;
