@@ -301,7 +301,7 @@ namespace elink
                         // Log original machine status only when not uploading
                         if (data.contains("machine_status") && data["machine_status"].is_object())
                         {
-                            ELEGOO_LOG_INFO("Received machine status: {}", data["machine_status"].dump());
+                            ELEGOO_LOG_INFO("[{}]Received machine status: {}", StringUtils::maskString(printerId), data.dump());
                             // If uploading, replace machine_status with simulated upload status
                             if (isUploading)
                             {

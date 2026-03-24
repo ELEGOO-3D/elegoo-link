@@ -307,6 +307,8 @@ namespace elink
         }
 
         m_lastHttpErrorCode = ELINK_ERROR_CODE::SUCCESS;
+        m_rtmConnectFailureCount.store(0);
+        m_mqttConnectFailureCount.store(0);
 
         // Update the cached credential
         {
@@ -379,6 +381,8 @@ namespace elink
         if (result.isSuccess())
         {
             m_lastHttpErrorCode = ELINK_ERROR_CODE::SUCCESS;
+            m_rtmConnectFailureCount.store(0);
+            m_mqttConnectFailureCount.store(0);
             m_cachedHttpCredential = result.data.value();
 
             // Add the new credential to the history
@@ -449,6 +453,9 @@ namespace elink
             m_mqttCredential = nullptr;
             m_cachedHttpCredential = HttpCredential{};
         }
+
+        m_rtmConnectFailureCount.store(0);
+        m_mqttConnectFailureCount.store(0);
 
         setOnlineStatus(false);
         return result;
@@ -613,7 +620,6 @@ namespace elink
 
         constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 1; // Refresh printer status every 2 cycles (20 seconds)
         int printerStatusRefreshCounter = 0;
-
         while (m_backgroundTasksRunning.load())
         {
             // Wait for specified time or receive stop signal
@@ -631,6 +637,14 @@ namespace elink
             {
                 refreshCredentials();
                 retryConnections();
+
+                //retryConnections();
+                // // Refresh tokens only when missing or explicitly triggered by retry policy.
+                // bool refreshedCredentials = refreshCredentials();
+                // if (refreshedCredentials)
+                // {
+                //     retryConnections();
+                // }
 
                 if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
                 {
@@ -863,24 +877,37 @@ namespace elink
         }
     }
 
-    void CloudService::refreshCredentials()
+    bool CloudService::refreshCredentials()
     {
+        bool credentialsUpdated = false;
+        bool shouldRefreshAgora = false;
+        bool shouldRefreshMqtt = false;
 
         {
             std::lock_guard<std::mutex> lock(m_refreshCredentialsMutex);
             if (m_IsRefreshingCredentials)
             {
-                return; // Already refreshing
+                return false; // Already refreshing
             }
-        }
-        {
-            std::lock_guard<std::mutex> lock(m_refreshCredentialsMutex);
             m_IsRefreshingCredentials = true;
         }
+
         try
         {
+            {
+                std::shared_lock<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                shouldRefreshAgora = (m_agoraCredential == nullptr);
+                shouldRefreshMqtt = (m_mqttCredential == nullptr);
+            }
+
+            if (!shouldRefreshAgora && !shouldRefreshMqtt)
+            {
+                std::lock_guard<std::mutex> lock(m_refreshCredentialsMutex);
+                m_IsRefreshingCredentials = false;
+                return false;
+            }
+
             std::shared_lock<std::shared_mutex> servicesLock(m_servicesMutex);
-            // Get Agora credentials
             if (m_httpService)
             {
                 if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
@@ -896,25 +923,26 @@ namespace elink
                         m_agoraCredential = nullptr;
                         m_mqttCredential = nullptr;
                     }
-                    return;
+                    return false;
                 }
 
-                if (m_rtmService && m_rtmService->isConnected())
+                if (shouldRefreshAgora)
                 {
-                    // Already have credential, skip refresh
-                }
-                else
-                {
-                    if (!m_rtmService->isLoginOtherDevice())
+                    if (!m_rtmService || m_rtmService->isConnected())
+                    {
+                        m_rtmConnectFailureCount.store(0);
+                    }
+                    else if (!m_rtmService->isLoginOtherDevice())
                     {
                         auto agoraResult = m_httpService->getAgoraCredential();
                         if (agoraResult.isSuccess())
                         {
-                            // Create new immutable credential pair
                             {
                                 std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
                                 m_agoraCredential = std::make_shared<const AgoraCredential>(agoraResult.value());
                             }
+                            credentialsUpdated = true;
+                            m_rtmConnectFailureCount.store(0);
                             ELEGOO_LOG_INFO("Agora credential refreshed successfully");
                             EventCallback eventCallback = nullptr;
                             {
@@ -938,6 +966,12 @@ namespace elink
                         {
                             ELEGOO_LOG_WARN("HTTP credential token expired, user may need to re-login.");
                             m_lastHttpErrorCode = agoraResult.code;
+                            
+                            m_rtmConnectFailureCount.store(0);
+                            {
+                                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                m_agoraCredential = nullptr;
+                            }
                         }
                         else
                         {
@@ -946,27 +980,34 @@ namespace elink
                     }
                 }
 
+                if (shouldRefreshMqtt)
                 {
-                    if (m_mqttService && m_mqttService->isConnected())
+                    if (!m_mqttService || m_mqttService->isConnected())
                     {
+                        m_mqttConnectFailureCount.store(0);
                     }
                     else
                     {
-                        // Get MQTT credentials
                         auto mqttResult = m_httpService->getMqttCredential();
                         if (mqttResult.isSuccess())
                         {
-                            // Create new immutable credential pair
                             {
                                 std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
                                 m_mqttCredential = std::make_shared<const MqttCredential>(mqttResult.value());
                             }
+                            credentialsUpdated = true;
+                            m_mqttConnectFailureCount.store(0);
                             ELEGOO_LOG_INFO("MQTT credential refreshed successfully");
                         }
                         else if (mqttResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
                         {
                             ELEGOO_LOG_WARN("HTTP credential token expired, user may need to re-login.");
                             m_lastHttpErrorCode = mqttResult.code;
+                            m_mqttConnectFailureCount.store(0);
+                            {
+                                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                m_mqttCredential = nullptr;
+                            }
                         }
                         else
                         {
@@ -984,6 +1025,8 @@ namespace elink
             std::lock_guard<std::mutex> lock(m_refreshCredentialsMutex);
             m_IsRefreshingCredentials = false;
         }
+
+        return credentialsUpdated;
     }
 
     void CloudService::retryConnections()
@@ -1017,7 +1060,38 @@ namespace elink
                     if (!rtmResult.isSuccess())
                     {
                         ELEGOO_LOG_ERROR("RTM reconnection failed: {}", rtmResult.message);
+
+                        if (rtmResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+                        {
+                            ELEGOO_LOG_WARN("RTM reconnect unauthorized, clear cached Agora token and refresh next cycle.");
+                            m_rtmConnectFailureCount.store(0);
+                            {
+                                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                m_agoraCredential = nullptr;
+                            }
+                        }
+                        else
+                        {
+                            int failedTimes = m_rtmConnectFailureCount.fetch_add(1) + 1;
+                            if (failedTimes >= TOKEN_REFRESH_ON_CONNECT_FAILURE_COUNT)
+                            {
+                                ELEGOO_LOG_WARN("RTM reconnect failed {} times, clear cached Agora token and refresh next cycle.", failedTimes);
+                                m_rtmConnectFailureCount.store(0);
+                                {
+                                    std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                    m_agoraCredential = nullptr;
+                                }
+                            }
+                        }
                     }
+                    else
+                    {
+                        m_rtmConnectFailureCount.store(0);
+                    }
+                }
+                else if (m_rtmService && m_rtmService->isConnected())
+                {
+                    m_rtmConnectFailureCount.store(0);
                 }
 
                 // Check MQTT connection status
@@ -1028,7 +1102,38 @@ namespace elink
                     if (!mqttResult.isSuccess())
                     {
                         ELEGOO_LOG_ERROR("MQTT reconnection failed: {}", mqttResult.message);
+
+                        if (mqttResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+                        {
+                            ELEGOO_LOG_WARN("MQTT reconnect unauthorized, clear cached MQTT token and refresh next cycle.");
+                            m_mqttConnectFailureCount.store(0);
+                            {
+                                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                m_mqttCredential = nullptr;
+                            }
+                        }
+                        else
+                        {
+                            int failedTimes = m_mqttConnectFailureCount.fetch_add(1) + 1;
+                            if (failedTimes >= TOKEN_REFRESH_ON_CONNECT_FAILURE_COUNT)
+                            {
+                                ELEGOO_LOG_WARN("MQTT reconnect failed {} times, clear cached MQTT token and refresh next cycle.", failedTimes);
+                                m_mqttConnectFailureCount.store(0);
+                                {
+                                    std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                    m_mqttCredential = nullptr;
+                                }
+                            }
+                        }
                     }
+                    else
+                    {
+                        m_mqttConnectFailureCount.store(0);
+                    }
+                }
+                else if (m_mqttService && m_mqttService->isConnected())
+                {
+                    m_mqttConnectFailureCount.store(0);
                 }
 
                 if ((m_rtmService && m_rtmService->isConnected()) ||

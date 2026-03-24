@@ -287,7 +287,7 @@ namespace elink
         {
             maskedParams["printerId"] = StringUtils::maskString(maskedParams["printerId"].get<std::string>());
         }
-        ELEGOO_LOG_DEBUG("RTM Request details: method={}, params={}", static_cast<int>(request.method), maskedParams.dump());
+        ELEGOO_LOG_INFO("RTM Request details: method={}, params={}", static_cast<int>(request.method), maskedParams.dump());
 
         if (!isConnected())
         {

@@ -930,26 +930,26 @@ namespace elink
                 if (jsonResponse.contains("data") && jsonResponse["data"].is_object())
                 {
                     int onlineStatus = JsonUtils::safeGetInt(jsonResponse["data"], "onlineStatus", 0);
-                    ELEGOO_LOG_INFO("[{}]Device online status retrieved successfully: {}", StringUtils::maskString(serialNumber), onlineStatus);
+                    ELEGOO_LOG_INFO("[{}]Device online status retrieved successfully, onlineStatus: {}", StringUtils::maskString(serialNumber), onlineStatus);
                     return BizResult<int>::Ok(onlineStatus);
                 }
                 else
                 {
-                    ELEGOO_LOG_ERROR("Invalid response format: missing or invalid data field");
+                    ELEGOO_LOG_ERROR("[{}]Invalid response format: missing or invalid data field", StringUtils::maskString(serialNumber));
                     return BizResult<int>::Error(ELINK_ERROR_CODE::SERVER_INVALID_RESPONSE, "Invalid response format");
                 }
             }
             else
             {
                 std::string msg = JsonUtils::safeGetString(jsonResponse, "msg", "Unknown error");
-                ELEGOO_LOG_ERROR("Failed to get device online status, code: {}, message: {}", code, msg);
+                ELEGOO_LOG_ERROR("[{}]Failed to get device online status, code: {}, message: {}", StringUtils::maskString(serialNumber), code, msg);
                 auto errorResult = serverErrorToNetworkError(code);
                 return BizResult<int>::Error(errorResult.code, msg);
             }
         }
         catch (const std::exception &e)
         {
-            ELEGOO_LOG_ERROR("Failed to parse device online status response: {}", e.what());
+            ELEGOO_LOG_ERROR("[{}]Failed to parse device online status response: {}", StringUtils::maskString(serialNumber), e.what());
             return BizResult<int>::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to parse response");
         }
     }
@@ -1390,6 +1390,7 @@ namespace elink
             return BizResult<nlohmann::json>::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
         }
 
+        ELEGOO_LOG_INFO("[{}]Getting printer status", StringUtils::maskString(printerId));
         auto httpClient = getHttpClient();
         if (!httpClient)
         {
@@ -1405,7 +1406,7 @@ namespace elink
         BizResult<HttpResponse> result = httpClient->get(buildUrlPath("/api/v1/device-management-server/device/report-data/list?deviceCode=" + UrlUtils::UrlEncode(serialNumber)));
         if (!result.isSuccess())
         {
-            ELEGOO_LOG_ERROR("Failed to get printer status: {}", result.message);
+            ELEGOO_LOG_ERROR("[{}]Failed to get printer status: {}", StringUtils::maskString(printerId), result.message);
             return BizResult<nlohmann::json>::Error(result.code, result.message);
         }
 
@@ -1441,6 +1442,7 @@ namespace elink
                                 std::string linkKey = JsonUtils::safeGetString(item, "reportLinkKey", "");
                                 std::string reportValue = JsonUtils::safeGetString(item, "reportValue", "");
                                 int64_t reportDataRefId = std::stoll(JsonUtils::safeGetString(item, "reportDataRefId", "0"));
+                                int64_t updateTime= JsonUtils::safeGetInt64(item, "updateTime", 0);
 
                                 // Store timestamp for this field
                                 if (!linkKey.empty() && reportDataRefId > 0)
@@ -1451,6 +1453,11 @@ namespace elink
                                 else if (reportDataRefId == 0)
                                 {
                                     ELEGOO_LOG_WARN("[TIMESTAMP-HTTP] Field {}.{} has reportDataRefId=0 or empty!", key, linkKey);
+                                }
+
+                                if(key == "machine_status")
+                                {
+                                    ELEGOO_LOG_INFO("[{}]Received machine status report: key={}, linkKey={}, reportValue={}, reportDataRefId={}, updateTime={}", StringUtils::maskString(printerId), key, linkKey, reportValue, reportDataRefId, updateTime);
                                 }
 
                                 if (key == "external_device" && linkKey == "type")
@@ -1526,38 +1533,38 @@ namespace elink
                     if (resultJson.contains("machine_status") && resultJson["machine_status"].is_object())
                     {
                         resultJson["machine_status"]["exception_status"] = std::vector<int>{};
-                        ELEGOO_LOG_INFO("Received machine status: {}", resultJson["machine_status"].dump());
+                        ELEGOO_LOG_INFO("[{}]Received machine status: {}", StringUtils::maskString(printerId), resultJson["machine_status"].dump());
                     }
 
                     // Add field_timestamps to result for CloudElegooFdmCC2MessageAdapter
                     if (!fieldTimestamps.empty())
                     {
                         resultJson["field_timestamps"] = fieldTimestamps;
-                        ELEGOO_LOG_INFO("[TIMESTAMP-HTTP] Added field_timestamps to HTTP response, {} top-level keys", fieldTimestamps.size());
-                        ELEGOO_LOG_DEBUG("[TIMESTAMP-HTTP] Full field_timestamps: {}", fieldTimestamps.dump());
+                        ELEGOO_LOG_INFO("[{}][TIMESTAMP-HTTP] Added field_timestamps to HTTP response, {} top-level keys", StringUtils::maskString(printerId), fieldTimestamps.size());
+                        ELEGOO_LOG_DEBUG("[{}][TIMESTAMP-HTTP] Full field_timestamps: {}", StringUtils::maskString(printerId), fieldTimestamps.dump());
                     }
                     else
                     {
-                        ELEGOO_LOG_WARN("[TIMESTAMP-HTTP] HTTP response has NO field_timestamps!");
+                        ELEGOO_LOG_WARN("[{}][TIMESTAMP-HTTP] HTTP response has NO field_timestamps!", StringUtils::maskString(printerId));
                     }
 
                     return BizResult<nlohmann::json>::Ok(std::move(resultJson));
                 }
                 else
                 {
-                    ELEGOO_LOG_ERROR("No data in printer status response");
+                    ELEGOO_LOG_ERROR("[{}]No data in printer status response", StringUtils::maskString(printerId));
                     return BizResult<nlohmann::json>::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "No data in printer status response");
                 }
             }
             else
             {
-                ELEGOO_LOG_ERROR("Failed to get printer status, code: {}", code);
+                ELEGOO_LOG_ERROR("[{}]Failed to get printer status, code: {}", StringUtils::maskString(printerId), code);
                 return serverErrorToNetworkError(code);
             }
         }
         catch (const std::exception &e)
         {
-            ELEGOO_LOG_ERROR("Failed to parse printer status response: {}", e.what());
+            ELEGOO_LOG_ERROR("[{}]Failed to parse printer status response: {}", StringUtils::maskString(printerId), e.what());
             return BizResult<nlohmann::json>::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to parse printer status response");
         }
     }
@@ -1647,7 +1654,7 @@ namespace elink
             {
                 return handleResult;
             }
-            ELEGOO_LOG_INFO("Successfully retrieved file list: {}", response.body);
+            ELEGOO_LOG_DEBUG("Successfully retrieved file list: {}", response.body);
 
             try
             {
@@ -1664,6 +1671,7 @@ namespace elink
                         bucketInfo.accessUrl = JsonUtils::safeGetString(data, "accessUrl", "");
                         bucketInfo.objectName = JsonUtils::safeGetString(data, "objectName", "");
                         bucketInfo.isPublicRead = JsonUtils::safeGetBool(data, "isPublicRead", false);
+                        ELEGOO_LOG_INFO("Retrieved OSS bucket info: entrypoint={}, objectName={}, expireTime={}", bucketInfo.entrypoint, bucketInfo.objectName, bucketInfo.expireTime);
                     }
                     else
                     {

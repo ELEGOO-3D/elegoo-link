@@ -125,6 +125,12 @@ namespace elink
                 networkErrorCode = ELINK_ERROR_CODE::PRINTER_OFFLINE;
                 errorMessage = StringUtils::formatErrorMessage(rtmError, errorMessage);
                 break;
+            case RTM_ERROR_INVALID_TOKEN:
+            case RTM_ERROR_TOKEN_EXPIRED:
+            case RTM_ERROR_INVALID_USER_ID:
+                networkErrorCode = ELINK_ERROR_CODE::SERVER_UNAUTHORIZED;
+                errorMessage = StringUtils::formatErrorMessage(rtmError, errorMessage);
+                break;
             default:
                 networkErrorCode = ELINK_ERROR_CODE::UNKNOWN_ERROR;
                 errorMessage = StringUtils::formatErrorMessage(rtmError, errorMessage);
@@ -604,7 +610,14 @@ namespace elink
                 }
                 else
                 {
-                    ELEGOO_LOG_ERROR("[RTM] Login succeeded but connection failed for user: {}", config_.userId);
+                    auto  reason =  eventHandler_->getCurrentConnectionChangeReason();
+                    if(reason == RTM_LINK_STATE_CHANGE_REASON::RTM_LINK_STATE_CHANGE_REASON_TOKEN_EXPIRED ||
+                        reason == RTM_LINK_STATE_CHANGE_REASON::RTM_LINK_STATE_CHANGE_REASON_INVALID_TOKEN)
+                    {
+                        ELEGOO_LOG_ERROR("[RTM] Login succeeded but connection failed due to invalid or expired token");
+                        return VoidResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Invalid or expired token");
+                    }
+                    ELEGOO_LOG_ERROR("[RTM] Login succeeded but connection failed");
                     return VoidResult::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "Connection timeout after login");
                 }
             }

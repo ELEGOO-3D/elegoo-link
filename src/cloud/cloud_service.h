@@ -184,7 +184,7 @@ namespace elink
         void connectionMonitorTask();
 
         // Credential management
-        void refreshCredentials();
+        bool refreshCredentials();
         // void connectServices();
 
         // Retry logic
@@ -246,9 +246,15 @@ namespace elink
         // Configuration constants
         static constexpr int TOKEN_REFRESH_CHECK_INTERVAL_SECONDS = 300; // Check every 5 minutes
         static constexpr int CONNECTION_MONITOR_INTERVAL_SECONDS = 10;   // Check connection every 10 seconds
+        static constexpr int TOKEN_REFRESH_ON_CONNECT_FAILURE_COUNT = 6; // Refresh token after consecutive connect failures
 
         bool m_IsRefreshingCredentials = false;
         std::mutex m_refreshCredentialsMutex;
+
+        // Retry failure tracking for token refresh throttling
+        // When consecutive connection failures reach a certain count, trigger a token refresh to avoid unrecoverable connection issues due to token expiration
+        std::atomic<int> m_rtmConnectFailureCount{0};
+        std::atomic<int> m_mqttConnectFailureCount{0};
 
         ELINK_ERROR_CODE m_lastHttpErrorCode = ELINK_ERROR_CODE::SUCCESS;
 

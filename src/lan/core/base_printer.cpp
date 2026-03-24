@@ -431,8 +431,14 @@ namespace elink
                             maskedContent = StringUtils::replaceAll(maskedContent, mainboardId, maskId);
                         }
 
-                        ELEGOO_LOG_WARN("Invalid response message for printer {}: {}",
-                                        StringUtils::maskString(printerInfo_.printerId), maskedContent);
+                        // Some status messages are also processed as responses but do not contain requestId. 
+                        // These should not trigger frequent warnings, so we handle them separately.
+                        if(parsedMessageTypes.size() == 1)
+                        {
+                            ELEGOO_LOG_WARN("Invalid response message for printer {}: {}",
+                                            StringUtils::maskString(printerInfo_.printerId), maskedContent);
+                        }
+
                         continue;
                     }
                     handleResponseMessage(standardResponse.requestId, standardResponse.code,

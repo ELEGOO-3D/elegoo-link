@@ -75,7 +75,7 @@ namespace elink
         {
             if (logRequest)
             {
-                ELEGOO_LOG_DEBUG("[RTM] Executing {}", actionName);
+                ELEGOO_LOG_INFO("[RTM] Executing {}", actionName);
             }
             
             // Validate initialized state
@@ -123,7 +123,7 @@ namespace elink
             {
                 if (logRequest)
                 {
-                    ELEGOO_LOG_DEBUG("[RTM] {} succeeded",  actionName);
+                    ELEGOO_LOG_INFO("[RTM] {} succeeded",  actionName);
                 }
             }
             else

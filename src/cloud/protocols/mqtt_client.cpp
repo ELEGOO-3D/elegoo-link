@@ -409,6 +409,20 @@ namespace elink
                 return VoidResult::Error(ELINK_ERROR_CODE::OPERATION_TIMEOUT, "MQTT connection timeout");
             }
         }
+        catch (const mqtt::exception &e){
+            auto reasonCode = e.get_reason_code();
+            auto returnCode = e.get_return_code();
+            std::string errorMsg = "MQTT connection failed: " + std::string(e.what());
+            updateConnectionState(MqttConnectionState::CONNECT_FAILED, errorMsg);
+            ELEGOO_LOG_ERROR(errorMsg);
+            if(reasonCode == mqtt::ReasonCode::BAD_USER_NAME_OR_PASSWORD || reasonCode == mqtt::ReasonCode::NOT_AUTHORIZED){
+                return VoidResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, errorMsg);
+            }
+            if(returnCode == 4 || returnCode == 5){ // MQTT 3.1.1 connection refused codes for bad username/password or not authorized
+                return VoidResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, errorMsg);
+            }
+            return VoidResult::Error(ELINK_ERROR_CODE::NETWORK_ERROR, errorMsg);
+        }
         catch (const std::exception &e)
         {
             std::string errorMsg = "MQTT connection failed: " + std::string(e.what());
