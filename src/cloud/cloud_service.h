@@ -192,6 +192,7 @@ namespace elink
 
         // Printer status refresh
         void refreshPrinterStatuses();
+        void refreshSinglePrinterStatusNow(const std::string &printerId);
 
         // Message adapter management
         void createMessageAdapters();
@@ -200,6 +201,10 @@ namespace elink
         // Service state check helper methods
         VoidResult validateHttpServiceState() const;
         VoidResult validateRtmServiceState() const;
+        // Clear cached data related to refresh timing, such as last refresh times and force refresh flags, to ensure that the next status refresh will not be blocked by stale timing data.
+        void clearRefreshTimingCaches();
+        void clearPrinterCaches();
+        void clearCredentialCaches(bool includeRegionCache);
 
         void setOnlineStatus(bool isOnline);
 
@@ -265,6 +270,13 @@ namespace elink
         // File upload cancellation tracking
         std::map<std::string, bool> m_uploadCancellations; // key: printerId, value: is cancelled
         mutable std::mutex m_uploadCancellationsMutex;     // Protect upload cancellation status
+
+        // Printer refresh timing cache
+        std::map<std::string, std::chrono::system_clock::time_point> m_lastHttpOnlineStatusCheckTimes; // key: printerId
+        mutable std::mutex m_refreshTimingMutex; // Protect refresh timing cache
+        std::map<std::string, bool> m_forceRefreshPrinters; // key: printerId, value: force refresh requested
+        mutable std::mutex m_forceRefreshMutex; // Protect force refresh flags
+
         // Bind printer state tracking
         enum class BindState
         {

@@ -6,6 +6,8 @@
 #include <atomic>
 #include <functional>
 #include <vector>
+#include <chrono>
+#include <optional>
 #include "type.h"
 #include "protocols/mqtt_client.h"
 #include "adapters/elegoo_fdm_cc2_message_adapter.h"
@@ -34,6 +36,7 @@ namespace elink
         VoidResult connect(const MqttCredential &credential);
         void disconnect();
         bool isConnected() const;
+        std::optional<std::chrono::system_clock::time_point> getLastConnectedTime() const;
 
         // Message callback
         void setEventCallback(EventCallback callback);
@@ -92,6 +95,8 @@ namespace elink
         // State
         std::atomic<bool> m_initialized{false};
         mutable std::mutex m_mutex;
+        mutable std::mutex m_connectionTimeMutex;
+        std::optional<std::chrono::system_clock::time_point> m_lastConnectedTime;
 
         mutable std::mutex m_dataMutex;
         // Printer information and message adapters

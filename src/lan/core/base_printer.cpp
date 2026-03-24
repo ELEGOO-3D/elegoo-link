@@ -23,7 +23,7 @@ namespace elink
           connectionStatus_(ConnectionStatus::DISCONNECTED),
           statusPollingRunning_(false)
     {
-        ELEGOO_LOG_INFO("Creating printer {} (Type: {})",
+        ELEGOO_LOG_DEBUG("Creating printer {} (Type: {})",
                         StringUtils::maskString(printerInfo_.printerId),
                         printerTypeToString(printerInfo_.printerType));
     }

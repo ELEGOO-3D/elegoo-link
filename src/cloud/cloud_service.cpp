@@ -190,26 +190,17 @@ namespace elink
                 m_eventCallback = nullptr;
             }
 
-            {
-                std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
-                m_printers.clear();
-                m_messageAdapters.clear();
-            }
+            clearPrinterCaches();
 
             // Clean up credentials
-            {
-                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
-                m_agoraCredential = nullptr;
-                m_mqttCredential = nullptr;
-                m_cachedHttpCredential = HttpCredential{};
-                m_cachedRegionParams = SetRegionParams{};
-            }
+            clearCredentialCaches(true);
 
             // Clean up upload status
             {
                 std::lock_guard<std::mutex> uploadLock(m_uploadingFilesMutex);
                 m_uploadingFiles.clear();
             }
+            clearRefreshTimingCaches();
 
             ELEGOO_LOG_INFO("CloudService cleanup completed");
         }
@@ -222,6 +213,37 @@ namespace elink
     bool CloudService::isInitialized() const
     {
         return m_initialized.load();
+    }
+
+    void CloudService::clearRefreshTimingCaches()
+    {
+        {
+            std::lock_guard<std::mutex> refreshTimingLock(m_refreshTimingMutex);
+            m_lastHttpOnlineStatusCheckTimes.clear();
+        }
+        {
+            std::lock_guard<std::mutex> forceRefreshLock(m_forceRefreshMutex);
+            m_forceRefreshPrinters.clear();
+        }
+    }
+
+    void CloudService::clearPrinterCaches()
+    {
+        std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
+        m_printers.clear();
+        m_messageAdapters.clear();
+    }
+
+    void CloudService::clearCredentialCaches(bool includeRegionCache)
+    {
+        std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+        m_agoraCredential = nullptr;
+        m_mqttCredential = nullptr;
+        m_cachedHttpCredential = HttpCredential{};
+        if (includeRegionCache)
+        {
+            m_cachedRegionParams = SetRegionParams{};
+        }
     }
 
     VoidResult CloudService::setRegion(const SetRegionParams &params)
@@ -315,6 +337,7 @@ namespace elink
             std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
             m_cachedHttpCredential = credential;
         }
+        clearRefreshTimingCaches();
 
         if (!credential.accessToken.empty() && !m_backgroundTasksRunning.load())
         {
@@ -384,6 +407,7 @@ namespace elink
             m_rtmConnectFailureCount.store(0);
             m_mqttConnectFailureCount.store(0);
             m_cachedHttpCredential = result.data.value();
+            clearRefreshTimingCaches();
 
             // Add the new credential to the history
             {
@@ -447,15 +471,16 @@ namespace elink
         }
 
         // Clean up credential cache
-        {
-            std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
-            m_agoraCredential = nullptr;
-            m_mqttCredential = nullptr;
-            m_cachedHttpCredential = HttpCredential{};
-        }
+        clearCredentialCaches(false);
 
         m_rtmConnectFailureCount.store(0);
         m_mqttConnectFailureCount.store(0);
+
+        // Clear cloud printer cache and adapters when credential is cleared
+        clearPrinterCaches();
+
+        clearRefreshTimingCaches();
+        updateServicesWithAdapters();
 
         setOnlineStatus(false);
         return result;
@@ -518,6 +543,8 @@ namespace elink
         {
             // If the printer list has changed, update the printer information for each service
             bool printersChanged = false;
+            std::vector<std::string> addedPrinterIds;
+            std::vector<std::string> removedPrinterIds;
 
             {
                 std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
@@ -525,29 +552,81 @@ namespace elink
                 oldPrinters = std::move(m_printers);
                 m_printers = result.data->printers;
                 createMessageAdapters();
-                if (oldPrinters.size() != m_printers.size())
+
+                // Track newly added printers so we can force an immediate status refresh.
+                for (const auto &newPrinter : m_printers)
                 {
-                    printersChanged = true;
-                    ELEGOO_LOG_INFO("Printer list changed: old size = {}, new size = {}", oldPrinters.size(), m_printers.size());
-                }
-                else
-                {
-                    for (const auto &newPrinter : m_printers)
+                    auto oldIt = std::find_if(oldPrinters.begin(), oldPrinters.end(),
+                                              [&newPrinter](const PrinterInfo &oldPrinter)
+                                              { return oldPrinter.serialNumber == newPrinter.serialNumber; });
+                    if (oldIt == oldPrinters.end())
                     {
-                        auto it = std::find_if(oldPrinters.begin(), oldPrinters.end(),
-                                               [&newPrinter](const PrinterInfo &oldPrinter)
-                                               { return oldPrinter.serialNumber == newPrinter.serialNumber; });
-                        if (it == oldPrinters.end())
-                        {
-                            printersChanged = true;
-                            break;
-                        }
+                        addedPrinterIds.push_back(newPrinter.printerId);
+                    }
+                }
+
+                // Track removed printers so we can stop refresh tracking immediately.
+                for (const auto &oldPrinter : oldPrinters)
+                {
+                    auto newIt = std::find_if(m_printers.begin(), m_printers.end(),
+                                              [&oldPrinter](const PrinterInfo &newPrinter)
+                                              { return newPrinter.serialNumber == oldPrinter.serialNumber; });
+                    if (newIt == m_printers.end())
+                    {
+                        removedPrinterIds.push_back(oldPrinter.printerId);
+                    }
+                }
+
+                printersChanged = !addedPrinterIds.empty() || !removedPrinterIds.empty();
+                if (printersChanged)
+                {
+                    ELEGOO_LOG_INFO("Printer list changed: old size = {}, new size = {}, added = {}, removed = {}",
+                                    oldPrinters.size(), m_printers.size(), addedPrinterIds.size(), removedPrinterIds.size());
+                }
+            }
+
+            // Stop tracking removed printers immediately.
+            if (!removedPrinterIds.empty())
+            {
+                {
+                    std::lock_guard<std::mutex> refreshTimingLock(m_refreshTimingMutex);
+                    for (const auto &printerId : removedPrinterIds)
+                    {
+                        m_lastHttpOnlineStatusCheckTimes.erase(printerId);
+                    }
+                }
+                {
+                    std::lock_guard<std::mutex> forceRefreshLock(m_forceRefreshMutex);
+                    for (const auto &printerId : removedPrinterIds)
+                    {
+                        m_forceRefreshPrinters.erase(printerId);
                     }
                 }
             }
+
             if (printersChanged)
             {
                 updateServicesWithAdapters();
+            }
+
+            // For new printers, request immediate refresh without changing reconnect pacing.
+            if (!addedPrinterIds.empty())
+            {
+                {
+                    std::lock_guard<std::mutex> forceRefreshLock(m_forceRefreshMutex);
+                    for (const auto &printerId : addedPrinterIds)
+                    {
+                        m_forceRefreshPrinters[printerId] = true;
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(m_backgroundTasksMutex);
+                    m_backgroundTasksWakeRequested.store(true);
+                }
+                m_backgroundTasksCv.notify_all();
+
+                ELEGOO_LOG_INFO("Marked {} new printers for immediate status refresh", addedPrinterIds.size());
             }
         }
         return result;
@@ -618,7 +697,7 @@ namespace elink
     {
         ELEGOO_LOG_INFO("Connection monitor task started");
 
-        constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 1; // Refresh printer status every 2 cycles (20 seconds)
+        constexpr int PRINTER_STATUS_REFRESH_INTERVAL_COUNT = 1; // Refresh printer status every cycle (10 seconds)
         int printerStatusRefreshCounter = 0;
         while (m_backgroundTasksRunning.load())
         {
@@ -637,14 +716,6 @@ namespace elink
             {
                 refreshCredentials();
                 retryConnections();
-
-                //retryConnections();
-                // // Refresh tokens only when missing or explicitly triggered by retry policy.
-                // bool refreshedCredentials = refreshCredentials();
-                // if (refreshedCredentials)
-                // {
-                //     retryConnections();
-                // }
 
                 if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
                 {
@@ -667,15 +738,163 @@ namespace elink
         ELEGOO_LOG_INFO("Connection monitor task ended");
     }
 
+    void CloudService::refreshSinglePrinterStatusNow(const std::string &printerId)
+    {
+        // First check if device is online
+        std::string serialNumber = getSerialNumberByPrinterId(printerId);
+        if (serialNumber.empty())
+        {
+            ELEGOO_LOG_WARN("Cannot find serial number for printer: {}", StringUtils::maskString(printerId));
+            return;
+        }
+
+        // Check online status
+        BizResult<int> onlineResult;
+        {
+            std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+            auto validationResult = validateHttpServiceState();
+            if (!validationResult.isSuccess())
+            {
+                ELEGOO_LOG_DEBUG("Skip refresh for printer {}: {}", StringUtils::maskString(printerId), validationResult.message);
+                return;
+            }
+            onlineResult = m_httpService->getDeviceOnlineStatus(serialNumber);
+        }
+        if (!onlineResult.isSuccess())
+        {
+            ELEGOO_LOG_DEBUG("Failed to get online status for printer {}: {}",
+                             StringUtils::maskString(printerId), onlineResult.message);
+            return;
+        }
+
+        EventCallback eventCallback = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_callbackMutex);
+            eventCallback = m_eventCallback;
+        }
+
+        int onlineStatus = onlineResult.value();
+        std::shared_ptr<IMessageAdapter> adapterPtr = nullptr;
+        {
+            std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
+            auto it = m_messageAdapters.find(printerId);
+            if (it != m_messageAdapters.end())
+            {
+                adapterPtr = it->second;
+            }
+        }
+        if (!adapterPtr)
+        {
+            ELEGOO_LOG_WARN("Cannot find message adapter for printer {}", StringUtils::maskString(printerId));
+            return;
+        }
+
+        bool reportedOnline = (onlineStatus == 1);
+        std::optional<PrinterStatusData> freshStatusData;
+        if (reportedOnline)
+        {
+            PrinterStatusParams params;
+            params.printerId = printerId;
+            PrinterStatusResult printerStatusResult = getPrinterStatusFromHttp(params);
+            if (printerStatusResult.isSuccess() && printerStatusResult.data.has_value())
+            {
+                freshStatusData = printerStatusResult.value();
+            }
+            else
+            {
+                ELEGOO_LOG_WARN("Printer {} reported online but failed to fetch status, treat as offline. code={}, msg={}",
+                                StringUtils::maskString(printerId),
+                                static_cast<int>(printerStatusResult.code),
+                                printerStatusResult.message);
+            }
+        }
+
+        // Record HTTP check time only after final connectivity judgment:
+        // - reported offline from HTTP
+        // - or reported online and full status fetched successfully
+        // This avoids throttling retries when device reports online but status pull fails.
+        if (!reportedOnline || freshStatusData.has_value())
+        {
+            std::lock_guard<std::mutex> lock(m_refreshTimingMutex);
+            m_lastHttpOnlineStatusCheckTimes[printerId] = std::chrono::system_clock::now();
+        }
+
+        bool currentlyConnected = adapterPtr->isConnected();
+        bool newlyConnected = reportedOnline && freshStatusData.has_value();
+        adapterPtr->setConnected(newlyConnected);
+        if (eventCallback && currentlyConnected != newlyConnected)
+        {
+            // Notify connection status change
+            BizEvent event;
+            event.method = MethodType::ON_CONNECTION_STATUS;
+            ConnectionStatusData eventData;
+            eventData.printerId = printerId;
+            eventData.status = (newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
+            event.data = eventData;
+            eventCallback(event);
+
+            if (!newlyConnected)
+            {
+                auto statusMessage = adapterPtr->wrapStatusData();
+                if (!statusMessage.empty())
+                {
+                    BizEvent event;
+                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
+                    PrinterEventRawData eventData;
+                    eventData.printerId = printerId;
+                    eventData.rawData = statusMessage.dump();
+                    event.data = eventData;
+                    eventCallback(event);
+                }
+            }
+        }
+
+        if (!newlyConnected)
+        {
+            ELEGOO_LOG_INFO("Printer {} is offline (reportedOnline={}, hasFreshStatus={}), skipping status refresh",
+                            StringUtils::maskString(printerId), reportedOnline, freshStatusData.has_value());
+            return;
+        }
+
+        if (freshStatusData.has_value())
+        {
+            BizEvent statusEvent;
+            statusEvent.method = MethodType::ON_PRINTER_STATUS;
+            PrinterStatusData printerStatusEvent = freshStatusData.value();
+            statusEvent.data = printerStatusEvent;
+            if (eventCallback)
+            {
+                eventCallback(statusEvent);
+            }
+
+            auto statusMessage = adapterPtr->wrapStatusData();
+            if (!statusMessage.empty() && eventCallback)
+            {
+                BizEvent event;
+                event.method = MethodType::ON_PRINTER_EVENT_RAW;
+                PrinterEventRawData eventData;
+                eventData.printerId = printerId;
+                eventData.rawData = statusMessage.dump();
+                event.data = eventData;
+                eventCallback(event);
+            }
+        }
+    }
+
     void CloudService::refreshPrinterStatuses()
     {
+        constexpr int FULL_STATUS_REFRESH_INTERVAL_SECONDS = 180;
+        constexpr int OFFLINE_ONLINE_STATUS_REFRESH_INTERVAL_SECONDS = 300;
+
         // Check if MQTT is connected
         bool mqttConnected = false;
+        std::optional<std::chrono::system_clock::time_point> lastMqttConnectedTime = std::nullopt;
         {
             std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
             if (m_mqttService)
             {
                 mqttConnected = m_mqttService->isConnected();
+                lastMqttConnectedTime = m_mqttService->getLastConnectedTime();
             }
         }
 
@@ -689,7 +908,18 @@ namespace elink
                 break;
             }
 
-            // Skip status refresh if file is uploading for this printer
+            bool isForceRefreshRequested = false;
+            {
+                std::lock_guard<std::mutex> forceRefreshLock(m_forceRefreshMutex);
+                auto forceIt = m_forceRefreshPrinters.find(printerInfo.printerId);
+                if (forceIt != m_forceRefreshPrinters.end() && forceIt->second)
+                {
+                    isForceRefreshRequested = true;
+                }
+            }
+
+            // Skip status refresh if file is uploading for this printer (except force refresh)
+            if (!isForceRefreshRequested)
             {
                 std::lock_guard<std::mutex> uploadLock(m_uploadingFilesMutex);
                 auto it = m_uploadingFiles.find(printerInfo.printerId);
@@ -707,36 +937,85 @@ namespace elink
                 if (adapterIt != m_messageAdapters.end())
                 {
                     auto adapter = adapterIt->second;
-                    if (!adapter->hasFullStatusCache())
+                    if (isForceRefreshRequested)
                     {
-                        // No cache exists, needs refresh
                         needsRefresh = true;
                     }
                     else
                     {
-                        // Check if cache is older than 3 minutes
-                        auto lastUpdateTime = adapter->getFullStatusLastUpdateTime();
-                        if (lastUpdateTime.has_value())
+                        auto now = std::chrono::system_clock::now();
+                        std::optional<std::chrono::system_clock::time_point> lastHttpOnlineStatusCheckTime = std::nullopt;
                         {
-                            auto now = std::chrono::system_clock::now();
-                            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdateTime.value());
-                            if (elapsed.count() > 180)
+                            std::lock_guard<std::mutex> lock(m_refreshTimingMutex);
+                            auto it = m_lastHttpOnlineStatusCheckTimes.find(printerInfo.printerId);
+                            if (it != m_lastHttpOnlineStatusCheckTimes.end())
+                            {
+                                lastHttpOnlineStatusCheckTime = it->second;
+                            }
+                        }
+                        bool mqttConnectedNewerThanHttpCheck =
+                            lastMqttConnectedTime.has_value() &&
+                            (!lastHttpOnlineStatusCheckTime.has_value() ||
+                             lastMqttConnectedTime.value() > lastHttpOnlineStatusCheckTime.value());
+
+                        if (mqttConnectedNewerThanHttpCheck)
+                        {
+                            // MQTT reconnected after last HTTP online check, refresh immediately
+                            needsRefresh = true;
+                        }
+                        else if (!adapter->isConnected())
+                        {
+                            // Offline printer: throttle HTTP online/offline polling to avoid frequent refreshes
+                            if (!lastHttpOnlineStatusCheckTime.has_value())
                             {
                                 needsRefresh = true;
                             }
+                            else
+                            {
+                                auto elapsedSinceHttpCheck = std::chrono::duration_cast<std::chrono::seconds>(
+                                    now - lastHttpOnlineStatusCheckTime.value());
+                                if (elapsedSinceHttpCheck.count() > OFFLINE_ONLINE_STATUS_REFRESH_INTERVAL_SECONDS)
+                                {
+                                    needsRefresh = true;
+                                }
+                            }
+                        }
+                        else if (!adapter->hasFullStatusCache())
+                        {
+                            // No cache exists, needs refresh
+                            needsRefresh = true;
                         }
                         else
                         {
-                            // Has cache but no timestamp, needs refresh
-                            needsRefresh = true;
+                            // Check if cache is older than 3 minutes
+                            auto lastUpdateTime = adapter->getFullStatusLastUpdateTime();
+                            if (lastUpdateTime.has_value())
+                            {
+                                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdateTime.value());
+                                if (elapsed.count() > FULL_STATUS_REFRESH_INTERVAL_SECONDS)
+                                {
+                                    needsRefresh = true;
+                                }
+                            }
+                            else
+                            {
+                                // Has cache but no timestamp, needs refresh
+                                needsRefresh = true;
+                            }
                         }
                     }
                 }
             }
 
-            // Only refresh if MQTT is connected and refresh is needed
-            if (needsRefresh && mqttConnected)
+            // Only refresh if MQTT is connected, to avoid unnecessary HTTP requests when device is offline. 
+            // If MQTT is disconnected, we will rely on the periodic online/offline status check to trigger refresh when device comes back online.
+            if (mqttConnected && (needsRefresh || isForceRefreshRequested))
             {
+                if (isForceRefreshRequested)
+                {
+                    std::lock_guard<std::mutex> forceRefreshLock(m_forceRefreshMutex);
+                    m_forceRefreshPrinters.erase(printerInfo.printerId);
+                }
                 printersToRefresh.push_back(printerInfo.printerId);
             }
         }
@@ -753,111 +1032,11 @@ namespace elink
                                              {
                     try
                     {
-                        // First check if device is online
-                        std::string serialNumber = getSerialNumberByPrinterId(printerId);
-                        if (serialNumber.empty())
-                        {
-                            ELEGOO_LOG_WARN("Cannot find serial number for printer: {}", StringUtils::maskString(printerId));
-                            return;
-                        }
-
-                        // Check online status
-                        auto onlineResult = m_httpService->getDeviceOnlineStatus(serialNumber);
-                        if (!onlineResult.isSuccess())
-                        {
-                            ELEGOO_LOG_DEBUG("Failed to get online status for printer {}: {}", 
-                                           StringUtils::maskString(printerId), onlineResult.message);
-                            return;
-                        }
-
-                        EventCallback eventCallback = nullptr;
-                        {
-                            std::lock_guard<std::mutex> lock(m_callbackMutex);
-                            eventCallback = m_eventCallback;
-                        }
-
-                        int onlineStatus = onlineResult.value();  
-                        std::shared_ptr<IMessageAdapter> adapterPtr = nullptr;
-                        {
-                            std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
-                            if(m_messageAdapters.find(printerId) != m_messageAdapters.end())
-                            {
-                                adapterPtr = m_messageAdapters[printerId];
-                            }
-                        }
-
-                        bool currentlyConnected = adapterPtr->isConnected();
-                        bool newlyConnected = (onlineStatus == 1);
-                        adapterPtr->setConnected(newlyConnected);
-                        if(eventCallback && currentlyConnected != newlyConnected)
-                        {
-                            // Notify connection status change
-                            BizEvent event;
-                            event.method = MethodType::ON_CONNECTION_STATUS;
-                            ConnectionStatusData eventData;
-                            eventData.printerId = printerId;
-                            eventData.status = (newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
-                            event.data = eventData;
-                            eventCallback(event);
-
-                            if(!newlyConnected)
-                            {
-                                auto statusMessage = adapterPtr->wrapStatusData();
-                                if (!statusMessage.empty())
-                                {
-                                    BizEvent event;
-                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                                    PrinterEventRawData eventData;
-                                    eventData.printerId = printerId;
-                                    eventData.rawData = statusMessage.dump();
-                                    event.data = eventData;
-                                    eventCallback(event);
-                                }
-                            }
-                        }
-                           
-
-                        if (!newlyConnected)
-                        {
-                            ELEGOO_LOG_INFO("Printer {} is offline (status: {}), skipping status refresh", 
-                                           StringUtils::maskString(printerId), newlyConnected);
-                            return;
-                        }
-
-                        // Device is online, proceed to get status
-                        PrinterStatusParams params;
-                        params.printerId = printerId;
-                        auto ret = getPrinterStatusFromHttp(params);
-
-                        if(ret.isSuccess() && ret.data.has_value())
-                        {
-                            BizEvent statusEvent;
-                            statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                            PrinterStatusData printerStatusEvent = ret.value();   
-                            statusEvent.data = printerStatusEvent;
-                            if(eventCallback)
-                            {
-                                eventCallback(statusEvent);
-                            }
-                            
-                            {
-                                auto statusMessage = adapterPtr->wrapStatusData();
-                                if (!statusMessage.empty())
-                                {
-                                    BizEvent event;
-                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                                    PrinterEventRawData eventData;
-                                    eventData.printerId = printerId;
-                                    eventData.rawData = statusMessage.dump();
-                                    event.data = eventData;
-                                    eventCallback(event);
-                                }
-                            }
-                        }
+                        refreshSinglePrinterStatusNow(printerId);
                     }
                     catch (const std::exception& e)
                     {
-                        ELEGOO_LOG_ERROR("Error refreshing printer status for {}: {}", 
+                        ELEGOO_LOG_ERROR("Error refreshing printer status for {}: {}",
                                        StringUtils::maskString(printerId), e.what());
                     } }));
             }
@@ -1024,6 +1203,11 @@ namespace elink
         {
             std::lock_guard<std::mutex> lock(m_refreshCredentialsMutex);
             m_IsRefreshingCredentials = false;
+        }
+
+        if (credentialsUpdated)
+        {
+            clearRefreshTimingCaches();
         }
 
         return credentialsUpdated;
@@ -1609,6 +1793,20 @@ namespace elink
             return ConnectPrinterResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
         }
 
+        bool mqttConnected = false;
+        {
+            std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+            if (m_mqttService)
+            {
+                mqttConnected = m_mqttService->isConnected();
+            }
+        }
+
+        if (!mqttConnected)
+        {
+            return ConnectPrinterResult::Error(ELINK_ERROR_CODE::NOT_CONNECTED_TO_SUBSERVICE, "MQTT service is not connected");
+        }
+
         std::string serialNumber = params.serialNumber;
         PrinterInfo printer;
         {
@@ -1854,20 +2052,6 @@ namespace elink
 
     PrinterAttributesResult CloudService::getPrinterAttributes(const PrinterAttributesParams &params)
     {
-        bool mqttConnected = false;
-        {
-            std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
-            if (m_mqttService)
-            {
-                mqttConnected = m_mqttService->isConnected();
-            }
-        }
-
-        if (!mqttConnected)
-        {
-            return PrinterAttributesResult::Error(ELINK_ERROR_CODE::NOT_CONNECTED_TO_SUBSERVICE, "MQTT service is not connected");
-        }
-
         VALIDATE_PRINTER_AND_RTM_SERVICE(VoidResult)
         BizRequest request;
         request.method = MethodType::GET_PRINTER_ATTRIBUTES;
@@ -1912,7 +2096,13 @@ namespace elink
             }
         }
 
-        // Wake up the background thread to execute refresh immediately
+        // Mark force refresh and let background thread execute it immediately
+        {
+            std::lock_guard<std::mutex> forceRefreshLock(m_forceRefreshMutex);
+            m_forceRefreshPrinters[params.printerId] = true;
+        }
+
+        // Wake background thread to process force refresh right away
         {
             std::lock_guard<std::mutex> lock(m_backgroundTasksMutex);
             m_backgroundTasksWakeRequested.store(true);

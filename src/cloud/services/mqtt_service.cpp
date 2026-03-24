@@ -68,6 +68,10 @@ namespace elink
                 m_printers.clear();
                 m_messageAdapters.clear();
             }
+            {
+                std::lock_guard<std::mutex> connectionTimeLock(m_connectionTimeMutex);
+                m_lastConnectedTime = std::nullopt;
+            }
             m_initialized.store(false);
             ELEGOO_LOG_INFO("MQTT service cleanup completed");
         }
@@ -153,6 +157,12 @@ namespace elink
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         return m_mqttClient && m_mqttClient->isConnected();
+    }
+
+    std::optional<std::chrono::system_clock::time_point> MqttService::getLastConnectedTime() const
+    {
+        std::lock_guard<std::mutex> lock(m_connectionTimeMutex);
+        return m_lastConnectedTime;
     }
 
     void MqttService::setEventCallback(EventCallback callback)
@@ -447,6 +457,7 @@ namespace elink
                             }
 
                             // Send raw event with full status if connected
+                            if (adapter)
                             {
                                 auto statusMessage = adapter->wrapStatusData();
                                 if (!statusMessage.empty())
@@ -531,6 +542,11 @@ namespace elink
                     // Restore connection and refresh status
                     case MqttConnectionState::CONNECTED: stateStr = "Connected";
                     {
+                        {
+                            std::lock_guard<std::mutex> connectionTimeLock(m_connectionTimeMutex);
+                            m_lastConnectedTime = std::chrono::system_clock::now();
+                        }
+
                         // std::lock_guard<std::mutex> lock(m_dataMutex);
                         // for (const auto &[printerId, adapter] : m_messageAdapters)
                         // {

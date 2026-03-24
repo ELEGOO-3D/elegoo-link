@@ -1424,7 +1424,7 @@ namespace elink
 
             if (code == 0)
             {
-                if (jsonResponse.contains("data") && jsonResponse["data"].is_object())
+                if (jsonResponse.contains("data") && jsonResponse["data"].is_object() && !jsonResponse["data"].empty())
                 {
                     nlohmann::json data = jsonResponse["data"];
                     nlohmann::json fieldTimestamps = nlohmann::json::object();
@@ -1553,7 +1553,7 @@ namespace elink
                 else
                 {
                     ELEGOO_LOG_ERROR("[{}]No data in printer status response", StringUtils::maskString(printerId));
-                    return BizResult<nlohmann::json>::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "No data in printer status response");
+                    return BizResult<nlohmann::json>::Error(ELINK_ERROR_CODE::SERVER_INVALID_RESPONSE, "No data in printer status response");
                 }
             }
             else
