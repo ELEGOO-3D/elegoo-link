@@ -399,6 +399,8 @@ namespace elink
                         std::string printerId = getPrinterId(printerSn);
                         int status = jsonData["onlineStatus"];
                         
+                        ELEGOO_LOG_INFO("Received connection status for printer {}: {}",
+                                        StringUtils::maskString(printerId), status == 1 ? "Online" : "Offline");
                         std::shared_ptr<IMessageAdapter> adapter;
                         {
                             std::lock_guard<std::mutex> lock(m_dataMutex);
@@ -472,6 +474,8 @@ namespace elink
                         if(eventDataJson.contains("eventType") && eventDataJson["eventType"].is_string()) {
                             std::string eventType = eventDataJson["eventType"];
                             if(eventType == "deviceBind") {
+                                ELEGOO_LOG_INFO("Received deviceBind event for printer {}",
+                                        StringUtils::maskString(printerId));
                                 std::lock_guard<std::mutex> lock(m_dataMutex);
                                 this->m_cacheBindResult[printerSn] = 1; // Bind successful
                                 {
@@ -480,6 +484,8 @@ namespace elink
                                     eventCallback(event);
                                 }
                             }else if(eventType == "deviceUnbind") {
+                                ELEGOO_LOG_INFO("Received deviceUnbind event for printer {}",
+                                        StringUtils::maskString(printerId));
                                 // std::lock_guard<std::mutex> lock(m_dataMutex);
                                 // this->m_cacheBindResult[printerSn] = 2; // Unbind successful
                                 BizEvent statusEvent;
@@ -499,6 +505,8 @@ namespace elink
                                     eventCallback(event);
                                 }
                             }else if(eventType == "deviceRejectBind") {  
+                                ELEGOO_LOG_INFO("Received deviceRejectBind event for printer {}",
+                                        StringUtils::maskString(printerId));
                                 std::lock_guard<std::mutex> lock(m_dataMutex);
                                 this->m_cacheBindResult[printerSn] = 2; // Bind rejected
                             }
