@@ -2068,7 +2068,7 @@ namespace elink
             auto adapterIt = m_messageAdapters.find(it->printerId);
             if (adapterIt != m_messageAdapters.end() && !adapterIt->second->isConnected())
             {
-                ELEGOO_LOG_WARN("Printer {} is offline", StringUtils::maskString(params.printerId));
+                // ELEGOO_LOG_WARN("Printer {} is offline", StringUtils::maskString(params.printerId));
                 return PrinterAttributesResult::Error(ELINK_ERROR_CODE::PRINTER_OFFLINE, "Printer is offline: " + params.printerId);
             }
         }
