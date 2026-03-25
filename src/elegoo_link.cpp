@@ -26,6 +26,7 @@ namespace elink
             PrinterState lastState = PrinterState::OFFLINE;
             PrinterSubState lastSubState = PrinterSubState::NONE;
             bool firstUpdate = true;
+            bool isCloudDevice = false;
         };
 
         bool initialize(const ElegooLink::Config &config)
@@ -87,6 +88,8 @@ namespace elink
 
         void cleanup()
         {
+            clearAllPrinterStateTrackers();
+
             if (!initialized_)
             {
                 return;
@@ -229,13 +232,53 @@ namespace elink
             }
         }
 
-        void createPrinterStateTrackerIfNeeded(const std::string &printerId)
+        void upsertPrinterStateTracker(const std::string &printerId, bool isCloudDevice)
         {
             std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
-            if (printerStateTrackers_.find(printerId) == printerStateTrackers_.end())
+            auto it = printerStateTrackers_.find(printerId);
+            if (it == printerStateTrackers_.end())
             {
-                printerStateTrackers_[printerId] = PrinterStateTracker();
+                auto tracker = PrinterStateTracker();
+                tracker.isCloudDevice = isCloudDevice;
+                printerStateTrackers_[printerId] = tracker;
                 ELEGOO_LOG_DEBUG("Created state tracker for printer: {}", printerId);
+            }
+            else
+            {
+                it->second.isCloudDevice = isCloudDevice;
+            }
+        }
+
+        void clearCloudPrinterStateTrackers()
+        {
+            std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
+            size_t removedCount = 0;
+            for (auto it = printerStateTrackers_.begin(); it != printerStateTrackers_.end();)
+            {
+                if (it->second.isCloudDevice)
+                {
+                    it = printerStateTrackers_.erase(it);
+                    ++removedCount;
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            if (removedCount > 0)
+            {
+                ELEGOO_LOG_INFO("Cleared {} cloud printer state tracker(s)", removedCount);
+            }
+        }
+
+        void clearAllPrinterStateTrackers()
+        {
+            std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
+            const size_t removedCount = printerStateTrackers_.size();
+            printerStateTrackers_.clear();
+            if (removedCount > 0)
+            {
+                ELEGOO_LOG_INFO("Cleared all printer state tracker(s): {}", removedCount);
             }
         }
 
@@ -367,7 +410,7 @@ namespace elink
                 ELINK_ERROR_CODE::NOT_INITIALIZED,
                 "ElegooLink is not initialized");
         }
-        pImpl_->createPrinterStateTrackerIfNeeded(params.printerId);
+        pImpl_->upsertPrinterStateTracker(params.printerId, params.networkMode == NetworkMode::CLOUD);
         if (pImpl_->shouldUseNetworkService(params))
         {
 #ifdef ENABLE_CLOUD_FEATURES
@@ -505,6 +548,7 @@ namespace elink
                 ELINK_ERROR_CODE::NOT_INITIALIZED,
                 "ElegooLink is not initialized");
         }
+        pImpl_->clearCloudPrinterStateTrackers();
 #ifdef ENABLE_CLOUD_FEATURES
         return getCloudService().setHttpCredential(credential);
 #else
@@ -556,6 +600,7 @@ namespace elink
                 ELINK_ERROR_CODE::NOT_INITIALIZED,
                 "ElegooLink is not initialized");
         }
+        pImpl_->clearCloudPrinterStateTrackers();
 #ifdef ENABLE_CLOUD_FEATURES
         return getCloudService().clearHttpCredential();
 #else
@@ -573,6 +618,7 @@ namespace elink
                 ELINK_ERROR_CODE::NOT_INITIALIZED,
                 "ElegooLink is not initialized");
         }
+        pImpl_->clearCloudPrinterStateTrackers();
 #ifdef ENABLE_CLOUD_FEATURES
         return getCloudService().logout();
 #else
