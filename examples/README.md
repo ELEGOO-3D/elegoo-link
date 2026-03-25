@@ -15,6 +15,12 @@ A comprehensive test program that demonstrates:
 - File upload (optional)
 - Starting a print job (optional)
 
+### cloud_service_test
+
+A minimal cloud API test program that demonstrates:
+- ElegooLink cloud initialization
+- `setHttpCredential`
+
 ## Building Examples
 
 ### Prerequisites
@@ -91,6 +97,16 @@ The compiled executables will be in:
 .\build\bin\Debug\printer_connection_test.exe --help
 ```
 
+**Cloud API test (requires cloud features):**
+```powershell
+# Configure first (important):
+cmake --preset windows-vcpkg -DBUILD_EXAMPLES=ON -DENABLE_CLOUD_FEATURES=ON
+cmake --build build --config Debug
+
+# Run basic cloud test
+.\build\bin\Debug\cloud_service_test.exe --region us --access-token <token> --refresh-token <token>
+```
+
 ## Configuration
 
 Before running, you may need to modify the test configuration in `printer_connection_test.cpp`:
@@ -109,6 +125,15 @@ struct TestConfig
 };
 ```
 
+For `cloud_service_test`, credentials can be passed by command line or environment variables:
+
+```powershell
+$env:ELINK_REGION="us"
+$env:ELINK_ACCESS_TOKEN="<token>"
+$env:ELINK_REFRESH_TOKEN="<refresh_token>"
+.\build\bin\Debug\cloud_service_test.exe
+```
+
 ## Command Line Options
 
 - `-u, --upload` - Enable file upload test
@@ -117,6 +142,18 @@ struct TestConfig
 - `-i, --interactive` - Run in interactive mode with menu
 - `-h, --help` - Show help message
 
+`cloud_service_test` common options:
+- `--region <us|eu|cn>` - Set cloud region
+- `--base-url <url>` - Override cloud API URL
+- `--ca-cert <path>` - Set CA cert path
+- `--user-agent <value>` - Set User-Agent
+- `--user-id <id>` - Set user id
+- `--access-token <token>` - Access token
+- `--refresh-token <token>` - Refresh token
+- `--access-expire <unixSec>` - Access token expire time
+- `--refresh-expire <unixSec>` - Refresh token expire time
+- `--help` - Show full option list
+
 ## Troubleshooting
 
 ### Example not building
@@ -124,6 +161,12 @@ struct TestConfig
 Make sure you configured with `-DBUILD_EXAMPLES=ON`:
 ```powershell
 cmake --preset windows-vcpkg -DBUILD_EXAMPLES=ON
+cmake --build build --config Debug
+```
+
+For cloud example, also enable cloud features:
+```powershell
+cmake --preset windows-vcpkg -DBUILD_EXAMPLES=ON -DENABLE_CLOUD_FEATURES=ON
 cmake --build build --config Debug
 ```
 

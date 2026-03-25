@@ -1,51 +1,52 @@
 # Examples CMakeLists.txt
 
-# Printer Connection Test Example
-add_executable(printer_connection_test
-    printer_connection_test.cpp
-)
-
-# Link against elegoolink library
-target_link_libraries(printer_connection_test PRIVATE
-    elegoolink
-)
-
-# Set output directory
-set_target_properties(printer_connection_test PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-
-# Disable code signing for Xcode on macOS
-if(APPLE)
-    set_target_properties(printer_connection_test PROPERTIES
-        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-        XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+function(add_elegoo_example target_name source_file file_description)
+    add_executable(${target_name}
+        ${source_file}
     )
-endif()
 
-# Generate resource file for executable on Windows
-if(WIN32 AND BUILD_SHARED_LIBS)
-    set(FILETYPE "0x1L") # Application
-    set(FILE_DESCRIPTION "Elegoo Link Printer Connection Test")
-    set(INTERNAL_NAME "printer_connection_test.exe")
-    set(ORIGINAL_FILENAME "printer_connection_test.exe")
-    set(PRODUCT_NAME "Elegoo Link Test")
-    
-    configure_file(
-        ${CMAKE_SOURCE_DIR}/resources/version.rc.in 
-        ${CMAKE_CURRENT_BINARY_DIR}/printer_connection_test.rc 
-        @ONLY
+    target_link_libraries(${target_name} PRIVATE
+        elegoolink
     )
-    target_sources(printer_connection_test PRIVATE 
-        ${CMAKE_CURRENT_BINARY_DIR}/printer_connection_test.rc
-    )
-endif()
 
-# Install the example executable
-install(TARGETS printer_connection_test
-    RUNTIME DESTINATION bin
-)
+    set_target_properties(${target_name} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+
+    if(APPLE)
+        set_target_properties(${target_name} PROPERTIES
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+        )
+    endif()
+
+    if(WIN32 AND BUILD_SHARED_LIBS)
+        set(FILETYPE "0x1L") # Application
+        set(FILE_DESCRIPTION "${file_description}")
+        set(INTERNAL_NAME "${target_name}.exe")
+        set(ORIGINAL_FILENAME "${target_name}.exe")
+        set(PRODUCT_NAME "Elegoo Link Test")
+
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/resources/version.rc.in
+            ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.rc
+            @ONLY
+        )
+
+        target_sources(${target_name} PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.rc
+        )
+    endif()
+
+    install(TARGETS ${target_name}
+        RUNTIME DESTINATION bin
+    )
+endfunction()
+
+add_elegoo_example(printer_connection_test printer_connection_test.cpp "Elegoo Link Printer Connection Test")
+add_elegoo_example(cloud_service_test cloud_service_test.cpp "Elegoo Link Cloud Service Test")
 
 message(STATUS "Examples configured:")
 message(STATUS "  - printer_connection_test")
+message(STATUS "  - cloud_service_test")
