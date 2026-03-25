@@ -738,14 +738,14 @@ namespace elink
         ELEGOO_LOG_INFO("Connection monitor task ended");
     }
 
-    void CloudService::refreshSinglePrinterStatusNow(const std::string &printerId)
+    BizResult<PrinterStatusData> CloudService::refreshSinglePrinterStatusNow(const std::string &printerId)
     {
         // First check if device is online
         std::string serialNumber = getSerialNumberByPrinterId(printerId);
         if (serialNumber.empty())
         {
             ELEGOO_LOG_WARN("Cannot find serial number for printer: {}", StringUtils::maskString(printerId));
-            return;
+            return PrinterStatusResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + printerId);
         }
 
         // Check online status
@@ -756,7 +756,7 @@ namespace elink
             if (!validationResult.isSuccess())
             {
                 ELEGOO_LOG_DEBUG("Skip refresh for printer {}: {}", StringUtils::maskString(printerId), validationResult.message);
-                return;
+                return PrinterStatusResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Skip refresh for printer: " + printerId + ", reason: " + validationResult.message);
             }
             onlineResult = m_httpService->getDeviceOnlineStatus(serialNumber);
         }
@@ -764,7 +764,7 @@ namespace elink
         {
             ELEGOO_LOG_DEBUG("Failed to get online status for printer {}: {}",
                              StringUtils::maskString(printerId), onlineResult.message);
-            return;
+            return PrinterStatusResult::Error(onlineResult.code, onlineResult.message);
         }
 
         EventCallback eventCallback = nullptr;
@@ -786,16 +786,17 @@ namespace elink
         if (!adapterPtr)
         {
             ELEGOO_LOG_WARN("Cannot find message adapter for printer {}", StringUtils::maskString(printerId));
-            return;
+            return PrinterStatusResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + printerId);
         }
 
         bool reportedOnline = (onlineStatus == 1);
         std::optional<PrinterStatusData> freshStatusData;
+        PrinterStatusResult printerStatusResult;
         if (reportedOnline)
         {
             PrinterStatusParams params;
             params.printerId = printerId;
-            PrinterStatusResult printerStatusResult = getPrinterStatusFromHttp(params);
+            printerStatusResult = getPrinterStatusFromHttp(params);
             if (printerStatusResult.isSuccess() && printerStatusResult.data.has_value())
             {
                 freshStatusData = printerStatusResult.value();
@@ -820,21 +821,39 @@ namespace elink
         }
 
         bool currentlyConnected = adapterPtr->isConnected();
-        bool newlyConnected = reportedOnline && freshStatusData.has_value();
+        // Consider printer as newly connected if it's reported online and we have full status data to update the cache, 
+        // which is the minimum requirement for normal operation. For printers that are reported online but we failed to get full status,
+        // we keep the old connection status to avoid frequent status flapping when HTTP or printer is unstable.
+        bool newlyConnected = reportedOnline && adapterPtr->hasFullStatusCache();
         adapterPtr->setConnected(newlyConnected);
         if (eventCallback && currentlyConnected != newlyConnected)
         {
-            // Notify connection status change
-            BizEvent event;
-            event.method = MethodType::ON_CONNECTION_STATUS;
-            ConnectionStatusData eventData;
-            eventData.printerId = printerId;
-            eventData.status = (newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
-            event.data = eventData;
-            eventCallback(event);
+            {
+                // Notify connection status change
+                BizEvent event;
+                event.method = MethodType::ON_CONNECTION_STATUS;
+                ConnectionStatusData eventData;
+                eventData.printerId = printerId;
+                eventData.status = (newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
+                event.data = eventData;
+                eventCallback(event);
+            }
 
             if (!newlyConnected)
             {
+                {
+                    BizEvent statusEvent;
+                    statusEvent.method = MethodType::ON_PRINTER_STATUS;
+                    PrinterStatusData printerStatusEvent;
+                    printerStatusEvent.printerId = printerId;
+                    printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
+                    statusEvent.data = printerStatusEvent;
+                    if (eventCallback)
+                    {
+                        eventCallback(statusEvent);
+                    }
+                }
+                
                 auto statusMessage = adapterPtr->wrapStatusData();
                 if (!statusMessage.empty())
                 {
@@ -853,7 +872,7 @@ namespace elink
         {
             ELEGOO_LOG_INFO("Printer {} is offline (reportedOnline={}, hasFreshStatus={}), skipping status refresh",
                             StringUtils::maskString(printerId), reportedOnline, freshStatusData.has_value());
-            return;
+            return PrinterStatusResult::Error(ELINK_ERROR_CODE::PRINTER_OFFLINE, "Printer is offline: " + printerId);
         }
 
         if (freshStatusData.has_value())
@@ -879,6 +898,7 @@ namespace elink
                 eventCallback(event);
             }
         }
+        return printerStatusResult;
     }
 
     void CloudService::refreshPrinterStatuses()
@@ -1007,7 +1027,7 @@ namespace elink
                 }
             }
 
-            // Only refresh if MQTT is connected, to avoid unnecessary HTTP requests when device is offline. 
+            // Only refresh if MQTT is connected, to avoid unnecessary HTTP requests when device is offline.
             // If MQTT is disconnected, we will rely on the periodic online/offline status check to trigger refresh when device comes back online.
             if (mqttConnected && (needsRefresh || isForceRefreshRequested))
             {
@@ -1145,7 +1165,7 @@ namespace elink
                         {
                             ELEGOO_LOG_WARN("HTTP credential token expired, user may need to re-login.");
                             m_lastHttpErrorCode = agoraResult.code;
-                            
+
                             m_rtmConnectFailureCount.store(0);
                             {
                                 std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
@@ -1793,20 +1813,6 @@ namespace elink
             return ConnectPrinterResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
         }
 
-        bool mqttConnected = false;
-        {
-            std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
-            if (m_mqttService)
-            {
-                mqttConnected = m_mqttService->isConnected();
-            }
-        }
-
-        if (!mqttConnected)
-        {
-            return ConnectPrinterResult::Error(ELINK_ERROR_CODE::NOT_CONNECTED_TO_SUBSERVICE, "MQTT service is not connected");
-        }
-
         std::string serialNumber = params.serialNumber;
         PrinterInfo printer;
         {
@@ -1818,12 +1824,6 @@ namespace elink
             {
                 ELEGOO_LOG_ERROR("Printer with SN {} not found for connection", StringUtils::maskString(serialNumber));
                 return ConnectPrinterResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + serialNumber);
-            }
-            auto adapterIt = m_messageAdapters.find(it->printerId);
-            if (adapterIt != m_messageAdapters.end() && !adapterIt->second->isConnected())
-            {
-                ELEGOO_LOG_WARN("Printer with SN {} is offline, cannot connect", StringUtils::maskString(serialNumber));
-                return ConnectPrinterResult::Error(ELINK_ERROR_CODE::PRINTER_OFFLINE, "Printer is offline: " + serialNumber);
             }
             printer = *it;
             printer.printerId = params.printerId;
@@ -1981,6 +1981,7 @@ namespace elink
             }
         }
     }
+
     StartPrintResult CloudService::startPrint(const StartPrintParams &params)
     {
         if (params.fileName.empty())
@@ -2046,12 +2047,32 @@ namespace elink
         // request.method = MethodType::GET_PRINTER_STATUS;
         // request.params = params;
 
-        return getPrinterStatusFromHttp(params);
+        // return getPrinterStatusFromHttp(params);
         // return executeRequestSync<PrinterStatusData>(params.printerId, request, "GetPrinterStatus", true, std::chrono::milliseconds(3000));
+
+        return refreshSinglePrinterStatusNow(params.printerId);
     }
 
     PrinterAttributesResult CloudService::getPrinterAttributes(const PrinterAttributesParams &params)
     {
+        {
+            std::shared_lock<std::shared_mutex> lock(m_printersMutex);
+            auto it = std::find_if(m_printers.begin(), m_printers.end(),
+                                   [&params](const PrinterInfo &p)
+                                   { return p.printerId == params.printerId; });
+            if (it == m_printers.end())
+            {
+                ELEGOO_LOG_ERROR("Printer with ID {} not found for getting attributes", StringUtils::maskString(params.printerId));
+                return PrinterAttributesResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + params.printerId);
+            }
+            auto adapterIt = m_messageAdapters.find(it->printerId);
+            if (adapterIt != m_messageAdapters.end() && !adapterIt->second->isConnected())
+            {
+                ELEGOO_LOG_WARN("Printer {} is offline", StringUtils::maskString(params.printerId));
+                return PrinterAttributesResult::Error(ELINK_ERROR_CODE::PRINTER_OFFLINE, "Printer is offline: " + params.printerId);
+            }
+        }
+
         VALIDATE_PRINTER_AND_RTM_SERVICE(VoidResult)
         BizRequest request;
         request.method = MethodType::GET_PRINTER_ATTRIBUTES;

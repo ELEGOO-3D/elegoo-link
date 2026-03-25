@@ -192,7 +192,7 @@ namespace elink
 
         // Printer status refresh
         void refreshPrinterStatuses();
-        void refreshSinglePrinterStatusNow(const std::string &printerId);
+        BizResult<PrinterStatusData> refreshSinglePrinterStatusNow(const std::string &printerId);
 
         // Message adapter management
         void createMessageAdapters();

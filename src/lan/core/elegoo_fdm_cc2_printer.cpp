@@ -23,7 +23,7 @@ namespace elink
                 {
                     ELEGOO_LOG_DEBUG("No full status cache available for printer {}, forcing refresh",
                                      StringUtils::maskString(printerInfo_.printerId));
-                    auto printerStatusResult = BasePrinter::getPrinterStatus(GetCanvasStatusParams{printerInfo_.printerId}, timeout);
+                    auto printerStatusResult = BasePrinter::getPrinterStatus(PrinterStatusParams{printerInfo_.printerId}, timeout);
                     if (!printerStatusResult.isSuccess())
                     {
                         return PrinterAttributesResult::Error(printerStatusResult.code,
