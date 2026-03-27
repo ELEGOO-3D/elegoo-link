@@ -271,16 +271,20 @@ namespace elink
             std::string affectedChannelsStr;
             for (size_t i = 0; i < event.affectedChannelCount; ++i)
             {
-                if (i > 0) affectedChannelsStr += ", ";
-                if (event.affectedChannels[i]) affectedChannelsStr += event.affectedChannels[i];
+                if (i > 0)
+                    affectedChannelsStr += ", ";
+                if (event.affectedChannels[i])
+                    affectedChannelsStr += event.affectedChannels[i];
             }
 
             // Build unrestored channels string
             std::string unrestoredChannelsStr;
             for (size_t i = 0; i < event.unrestoredChannelCount; ++i)
             {
-                if (i > 0) unrestoredChannelsStr += ", ";
-                if (event.unrestoredChannels[i]) unrestoredChannelsStr += event.unrestoredChannels[i];
+                if (i > 0)
+                    unrestoredChannelsStr += ", ";
+                if (event.unrestoredChannels[i])
+                    unrestoredChannelsStr += event.unrestoredChannels[i];
             }
 
             ELEGOO_LOG_INFO(
@@ -610,8 +614,8 @@ namespace elink
                 }
                 else
                 {
-                    auto  reason =  eventHandler_->getCurrentConnectionChangeReason();
-                    if(reason == RTM_LINK_STATE_CHANGE_REASON::RTM_LINK_STATE_CHANGE_REASON_TOKEN_EXPIRED ||
+                    auto reason = eventHandler_->getCurrentConnectionChangeReason();
+                    if (reason == RTM_LINK_STATE_CHANGE_REASON::RTM_LINK_STATE_CHANGE_REASON_TOKEN_EXPIRED ||
                         reason == RTM_LINK_STATE_CHANGE_REASON::RTM_LINK_STATE_CHANGE_REASON_INVALID_TOKEN)
                     {
                         ELEGOO_LOG_ERROR("[RTM] Login succeeded but connection failed due to invalid or expired token");
@@ -978,16 +982,16 @@ namespace elink
         std::unique_lock<std::shared_mutex> lock(stateMutex_);
 
         // If user ID changed, need to reinitialize RTM client
-        // if (config_.userId != newConfig.userId || config_.appId != newConfig.appId)
+        if (config_.userId != newConfig.userId || config_.appId != newConfig.appId)
         {
-            // // Logout old user first
-            // if (isLoggedIn_)
-            // {
-            //     // Release lock, call logout, then reacquire lock
-            //     lock.unlock();
-            //     logout();
-            //     lock.lock();
-            // }
+            // Logout old user first
+            if (isLoggedIn_)
+            {
+                // Release lock, call logout, then reacquire lock
+                lock.unlock();
+                logout();
+                lock.lock();
+            }
 
             // Temporarily release lock, call cleanup, then reacquire lock
             lock.unlock();
@@ -1005,7 +1009,7 @@ namespace elink
                 lock.unlock();
                 initialize();
                 lock.lock();
-                ELEGOO_LOG_DEBUG("[RTM] Client reinitialized for user: {}", config_.userId);
+                ELEGOO_LOG_DEBUG("[RTM] Client reinitialized for new user: {}", config_.userId);
                 return VoidResult::Success();
             }
             catch (const std::exception &e)
@@ -1014,13 +1018,21 @@ namespace elink
                 return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, e.what());
             }
         }
-        // else
-        // {
-        //     // Just token change, can update directly
-        //     config_ = newConfig;
-        //     ELEGOO_LOG_DEBUG("[RTM] Configuration updated");
-        //     return VoidResult::Success();
-        // }
+        else
+        {
+            // Logout old user first
+            if (isLoggedIn_)
+            {
+                // Release lock, call logout, then reacquire lock
+                lock.unlock();
+                logout();
+                lock.lock();
+            }
+            // Just token change, can update directly
+            config_ = newConfig;
+            ELEGOO_LOG_DEBUG("[RTM] Configuration updated");
+            return VoidResult::Success();
+        }
     }
 
     // Getters
