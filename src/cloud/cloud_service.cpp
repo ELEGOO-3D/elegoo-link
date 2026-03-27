@@ -665,6 +665,10 @@ namespace elink
 
         m_backgroundTasksRunning.store(true);
 
+        if (m_connectionMonitorThread.joinable())
+        {
+            m_connectionMonitorThread.join();
+        }
         // Start connection monitoring task
         m_connectionMonitorThread = std::thread([this]()
                                                 { connectionMonitorTask(); });
@@ -730,7 +734,12 @@ namespace elink
                         m_cachedHttpCredential.accessToken.empty() ||
                         m_rtmService->isLoginOtherDevice())
                     {
-                        continue; // Skip further processing if unauthorized
+                        m_backgroundTasksRunning.store(false); // Stop background tasks to prevent repeated failures and logs
+                        ELEGOO_LOG_WARN("Stopping background tasks due to unauthorized state or RTM login from another device. lastHttpErrorCode={}, accessTokenEmpty={}, rtmLoginOtherDevice={}",
+                                        static_cast<int>(m_lastHttpErrorCode),
+                                        m_cachedHttpCredential.accessToken.empty(),
+                                        m_rtmService->isLoginOtherDevice());
+                        return;
                     }
                 }
 
