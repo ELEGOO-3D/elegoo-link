@@ -152,6 +152,8 @@ namespace elink
          */
         RenewLicenseResult renewLicense(const RenewLicenseParams &params);
 
+        VoidResult ping();
+
         std::vector<PrinterInfo> getCachedPrinters() const
         {
             std::shared_lock lock(m_printersMutex);

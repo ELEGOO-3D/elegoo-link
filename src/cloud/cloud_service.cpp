@@ -80,6 +80,7 @@ namespace elink
 
         try
         {
+            ELEGOO_LOG_INFO("Starting CloudService initialization");
             s_cloudStaticWebPath = config.staticWebPath;
             {
                 // m_httpService(std::make_unique<HttpService>()), m_mqttService(std::make_unique<MqttService>()), m_rtmService(std::make_unique<RtmService>())
@@ -154,6 +155,7 @@ namespace elink
 
         try
         {
+            ELEGOO_LOG_INFO("Starting CloudService cleanup");
             // First set the status to uninitialized to prevent new operations
             m_initialized.store(false);
             {
@@ -748,6 +750,76 @@ namespace elink
             return PrinterStatusResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + printerId);
         }
 
+        std::shared_ptr<IMessageAdapter> adapterPtr = nullptr;
+        {
+            std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
+            auto it = m_messageAdapters.find(printerId);
+            if (it != m_messageAdapters.end())
+            {
+                adapterPtr = it->second;
+            }
+        }
+
+        EventCallback eventCallback = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_callbackMutex);
+            eventCallback = m_eventCallback;
+        }
+
+        auto emitConnectionStatusEvent = [&](ConnectionStatus status)
+        {
+            if (!eventCallback)
+            {
+                return;
+            }
+
+            BizEvent event;
+            event.method = MethodType::ON_CONNECTION_STATUS;
+            ConnectionStatusData eventData;
+            eventData.printerId = printerId;
+            eventData.status = status;
+            event.data = eventData;
+            eventCallback(event);
+        };
+
+        auto emitRawStatusEvent = [&]()
+        {
+            if (!eventCallback || !adapterPtr)
+            {
+                return;
+            }
+
+            auto statusMessage = adapterPtr->wrapStatusData();
+            if (statusMessage.empty())
+            {
+                return;
+            }
+
+            BizEvent event;
+            event.method = MethodType::ON_PRINTER_EVENT_RAW;
+            PrinterEventRawData eventData;
+            eventData.printerId = printerId;
+            eventData.rawData = statusMessage.dump();
+            event.data = eventData;
+            eventCallback(event);
+        };
+
+        auto emitOfflineStatusEvents = [&]()
+        {
+            if (eventCallback)
+            {
+                BizEvent statusEvent;
+                statusEvent.method = MethodType::ON_PRINTER_STATUS;
+                PrinterStatusData printerStatusEvent;
+                printerStatusEvent.printerId = printerId;
+                printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
+                statusEvent.data = printerStatusEvent;
+                eventCallback(statusEvent);
+            }
+
+            emitRawStatusEvent();
+        };
+
         // Check online status
         BizResult<int> onlineResult;
         {
@@ -762,27 +834,22 @@ namespace elink
         }
         if (!onlineResult.isSuccess())
         {
+            if (onlineResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+            {
+                m_lastHttpErrorCode = ELINK_ERROR_CODE::SERVER_UNAUTHORIZED;
+                if (adapterPtr && adapterPtr->isConnected())
+                {
+                    adapterPtr->setConnected(false);
+                    emitConnectionStatusEvent(ConnectionStatus::DISCONNECTED);
+                    emitOfflineStatusEvents();
+                }
+            }
             ELEGOO_LOG_DEBUG("Failed to get online status for printer {}: {}",
                              StringUtils::maskString(printerId), onlineResult.message);
             return PrinterStatusResult::Error(onlineResult.code, onlineResult.message);
         }
 
-        EventCallback eventCallback = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(m_callbackMutex);
-            eventCallback = m_eventCallback;
-        }
-
         int onlineStatus = onlineResult.value();
-        std::shared_ptr<IMessageAdapter> adapterPtr = nullptr;
-        {
-            std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
-            auto it = m_messageAdapters.find(printerId);
-            if (it != m_messageAdapters.end())
-            {
-                adapterPtr = it->second;
-            }
-        }
         if (!adapterPtr)
         {
             ELEGOO_LOG_WARN("Cannot find message adapter for printer {}", StringUtils::maskString(printerId));
@@ -821,50 +888,18 @@ namespace elink
         }
 
         bool currentlyConnected = adapterPtr->isConnected();
-        // Consider printer as newly connected if it's reported online and we have full status data to update the cache, 
+        // Consider printer as newly connected if it's reported online and we have full status data to update the cache,
         // which is the minimum requirement for normal operation. For printers that are reported online but we failed to get full status,
         // we keep the old connection status to avoid frequent status flapping when HTTP or printer is unstable.
         bool newlyConnected = reportedOnline && adapterPtr->hasFullStatusCache();
         adapterPtr->setConnected(newlyConnected);
-        if (eventCallback && currentlyConnected != newlyConnected)
+        if (currentlyConnected != newlyConnected)
         {
-            {
-                // Notify connection status change
-                BizEvent event;
-                event.method = MethodType::ON_CONNECTION_STATUS;
-                ConnectionStatusData eventData;
-                eventData.printerId = printerId;
-                eventData.status = (newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
-                event.data = eventData;
-                eventCallback(event);
-            }
+            emitConnectionStatusEvent((newlyConnected) ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED);
 
             if (!newlyConnected)
             {
-                {
-                    BizEvent statusEvent;
-                    statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                    PrinterStatusData printerStatusEvent;
-                    printerStatusEvent.printerId = printerId;
-                    printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
-                    statusEvent.data = printerStatusEvent;
-                    if (eventCallback)
-                    {
-                        eventCallback(statusEvent);
-                    }
-                }
-                
-                auto statusMessage = adapterPtr->wrapStatusData();
-                if (!statusMessage.empty())
-                {
-                    BizEvent event;
-                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                    PrinterEventRawData eventData;
-                    eventData.printerId = printerId;
-                    eventData.rawData = statusMessage.dump();
-                    event.data = eventData;
-                    eventCallback(event);
-                }
+                emitOfflineStatusEvents();
             }
         }
 
@@ -885,18 +920,7 @@ namespace elink
             {
                 eventCallback(statusEvent);
             }
-
-            auto statusMessage = adapterPtr->wrapStatusData();
-            if (!statusMessage.empty() && eventCallback)
-            {
-                BizEvent event;
-                event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                PrinterEventRawData eventData;
-                eventData.printerId = printerId;
-                eventData.rawData = statusMessage.dump();
-                event.data = eventData;
-                eventCallback(event);
-            }
+            emitRawStatusEvent();
         }
         return printerStatusResult;
     }
@@ -1253,6 +1277,7 @@ namespace elink
                 {
                     ELEGOO_LOG_WARN("RTM logged in from another device, skipping reconnection attempts.");
                     setOnlineStatus(false);
+                    m_mqttService->disconnect();
                     return;
                 }
 
@@ -2102,6 +2127,7 @@ namespace elink
             return VoidResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
         }
 
+        ELEGOO_LOG_INFO("Manually refreshing printer status for printer: {}", StringUtils::maskString(params.printerId));
         // Reset the full status timestamp in the adapter to force a refresh
         {
             std::lock_guard<std::shared_mutex> printersLock(m_printersMutex);
@@ -2735,4 +2761,14 @@ namespace elink
         return m_httpService->renewLicense(params);
     }
 
+    VoidResult CloudService::ping()
+    {
+        std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+        auto validationResult = validateHttpServiceState();
+        if (!validationResult.isSuccess())
+        {
+            return VoidResult::Error(validationResult.code, validationResult.message);
+        }
+        return m_httpService->ping();
+    }
 }

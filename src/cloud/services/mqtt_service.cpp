@@ -5,6 +5,69 @@
 #include "types/internal/internal.h"
 #include "types/internal/json_serializer.h"
 #include "utils/json_utils.h"
+
+namespace
+{
+    void emitConnectionStatusEvent(const elink::EventCallback &eventCallback,
+                                   const std::string &printerId,
+                                   elink::ConnectionStatus status)
+    {
+        if (!eventCallback)
+        {
+            return;
+        }
+
+        elink::BizEvent event;
+        elink::ConnectionStatusData eventData;
+        eventData.printerId = printerId;
+        eventData.status = status;
+        event.method = elink::MethodType::ON_CONNECTION_STATUS;
+        event.data = eventData;
+        eventCallback(event);
+    }
+
+    void emitOfflinePrinterStatusEvent(const elink::EventCallback &eventCallback,
+                                       const std::string &printerId)
+    {
+        if (!eventCallback)
+        {
+            return;
+        }
+
+        elink::BizEvent statusEvent;
+        statusEvent.method = elink::MethodType::ON_PRINTER_STATUS;
+        elink::PrinterStatusData printerStatusEvent;
+        printerStatusEvent.printerId = printerId;
+        printerStatusEvent.printerStatus.state = elink::PrinterState::OFFLINE;
+        statusEvent.data = printerStatusEvent;
+        eventCallback(statusEvent);
+    }
+
+    void emitRawPrinterEvent(const elink::EventCallback &eventCallback,
+                             const std::string &printerId,
+                             const std::shared_ptr<elink::IMessageAdapter> &adapter)
+    {
+        if (!eventCallback || !adapter)
+        {
+            return;
+        }
+
+        auto statusMessage = adapter->wrapStatusData();
+        if (statusMessage.empty())
+        {
+            return;
+        }
+
+        elink::BizEvent event;
+        event.method = elink::MethodType::ON_PRINTER_EVENT_RAW;
+        elink::PrinterEventRawData eventData;
+        eventData.printerId = printerId;
+        eventData.rawData = statusMessage.dump();
+        event.data = eventData;
+        eventCallback(event);
+    }
+}
+
 namespace elink
 {
     MqttService::MqttService()
@@ -364,17 +427,7 @@ namespace elink
                                 }
 
                                 {
-                                    auto statusMessage = adapter->wrapStatusData();
-                                    if (!statusMessage.empty())
-                                    {
-                                        BizEvent event;
-                                        event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                                        PrinterEventRawData eventData;
-                                        eventData.printerId = printerId;
-                                        eventData.rawData = statusMessage.dump();
-                                        event.data = eventData;
-                                        eventCallback(event);
-                                    }
+                                    emitRawPrinterEvent(eventCallback, printerId, adapter);
                                 }
                                                               
                                 // To ensure that the exception status is cleared in time, otherwise there may be a problem of continuously notifying the exception status
@@ -426,51 +479,16 @@ namespace elink
                             adapter->setConnected(status == 1);
                         }
                     
-                        BizEvent event;
-                        EventCallback eventCallback;
-                        {
-                            ConnectionStatusData eventData;
-                            eventData.printerId = printerId;
-                            eventData.status = status == 1 ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED;
-                            event.method = MethodType::ON_CONNECTION_STATUS;
-                            event.data = eventData;
-                            eventCallback = m_eventCallback;
-                        }      
-
-                        if (eventCallback) 
-                        {
-                            eventCallback(event);
-                        }
+                        EventCallback eventCallback = m_eventCallback;
+                        emitConnectionStatusEvent(eventCallback,
+                                                  printerId,
+                                                  status == 1 ? ConnectionStatus::CONNECTED : ConnectionStatus::DISCONNECTED);
 
                         // If disconnected, also send printer status offline event
                         if(status == 0)
                         {
-                            BizEvent statusEvent;
-                            statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                            PrinterStatusData printerStatusEvent;
-                            printerStatusEvent.printerId = printerId;
-                            printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
-                            statusEvent.data = printerStatusEvent;
-                            if (eventCallback) 
-                            {
-                                eventCallback(statusEvent);
-                            }
-
-                            // Send raw event with full status if connected
-                            if (adapter)
-                            {
-                                auto statusMessage = adapter->wrapStatusData();
-                                if (!statusMessage.empty())
-                                {
-                                    BizEvent event;
-                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                                    PrinterEventRawData eventData;
-                                    eventData.printerId = printerId;
-                                    eventData.rawData = statusMessage.dump();
-                                    event.data = eventData;
-                                    eventCallback(event);
-                                }
-                            }
+                            emitOfflinePrinterStatusEvent(eventCallback, printerId);
+                            emitRawPrinterEvent(eventCallback, printerId, adapter);
                         }
                     }
                 } else if (topic.find(TOPIC_EVENT_SUFFIX) != std::string::npos) {
@@ -499,16 +517,7 @@ namespace elink
                                         StringUtils::maskString(printerId));
                                 // std::lock_guard<std::mutex> lock(m_dataMutex);
                                 // this->m_cacheBindResult[printerSn] = 2; // Unbind successful
-                                BizEvent statusEvent;
-                                statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                                PrinterStatusData printerStatusEvent;
-                                printerStatusEvent.printerId = printerId;
-                                printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
-                                statusEvent.data = printerStatusEvent;
-                                if (eventCallback) 
-                                {
-                                    eventCallback(statusEvent);
-                                }
+                                emitOfflinePrinterStatusEvent(eventCallback, printerId);
                                 if (eventCallback) 
                                 {
                                     BizEvent event;
@@ -559,18 +568,12 @@ namespace elink
                         }
                         break;
                     }
+                    case MqttConnectionState::CONNECTING: stateStr = "Connecting"; break;
+                    case MqttConnectionState::RECONNECTING: stateStr = "Reconnecting"; break;
                     case MqttConnectionState::DISCONNECTED: 
                     {
                         stateStr = "Disconnected"; 
-                        // std::lock_guard<std::mutex> lock(m_dataMutex);
-                        // for (const auto &[printerId, adapter] : m_messageAdapters)
-                        // {
-                        //     adapter->resetFullStatusLastUpdateTime();
-                        // }
-                        break;
                     }
-                    case MqttConnectionState::CONNECTING: stateStr = "Connecting"; break;
-                    case MqttConnectionState::RECONNECTING: stateStr = "Reconnecting"; break;
                     case MqttConnectionState::CONNECTION_LOST: 
                     {
                         EventCallback eventCallback;
@@ -578,36 +581,18 @@ namespace elink
                             std::lock_guard<std::mutex> lock(m_eventCallbackMutex);
                             eventCallback = m_eventCallback;
                         }
-                        stateStr = "Connection Lost"; 
+                        if(stateStr.empty())
+                        {
+                            stateStr = "Connection Lost"; 
+                        }
                         std::lock_guard<std::mutex> lock(m_dataMutex);
                         for (const auto &[printerId, adapter] : m_messageAdapters)
                         {
                             adapter->setConnected(false);
 
-                            BizEvent statusEvent;
-                            statusEvent.method = MethodType::ON_PRINTER_STATUS;
-                            PrinterStatusData printerStatusEvent;
-                            printerStatusEvent.printerId = printerId;
-                            printerStatusEvent.printerStatus.state = PrinterState::OFFLINE;
-                            statusEvent.data = printerStatusEvent;
-                            if (eventCallback) 
-                            {
-                                eventCallback(statusEvent);
-                            }
-                            
-                            {
-                                auto statusMessage = adapter->wrapStatusData();
-                                if (!statusMessage.empty())
-                                {
-                                    BizEvent event;
-                                    event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                                    PrinterEventRawData eventData;
-                                    eventData.printerId = printerId;
-                                    eventData.rawData = statusMessage.dump();
-                                    event.data = eventData;
-                                    eventCallback(event);
-                                }
-                            }
+                            emitOfflinePrinterStatusEvent(eventCallback, printerId);
+                            emitConnectionStatusEvent(eventCallback, printerId, ConnectionStatus::DISCONNECTED);
+                            emitRawPrinterEvent(eventCallback, printerId, adapter);
                         }
                         break;
                     }
@@ -752,17 +737,7 @@ namespace elink
                 }
 
                 {
-                    auto statusMessage = adapter->wrapStatusData();
-                    if (!statusMessage.empty())
-                    {
-                        BizEvent event;
-                        event.method = MethodType::ON_PRINTER_EVENT_RAW;
-                        PrinterEventRawData eventData;
-                        eventData.printerId = printerId;
-                        eventData.rawData = statusMessage.dump();
-                        event.data = eventData;
-                        eventCallback(event);
-                    }
+                    emitRawPrinterEvent(eventCallback, printerId, adapter);
                 }
             }
         }

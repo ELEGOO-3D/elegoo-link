@@ -324,6 +324,7 @@ namespace elink
 
     bool ElegooLink::initialize(const Config &config)
     {
+        ELEGOO_LOG_INFO("Initializing ElegooLink SDK - Version: {}", ELEGOO_LINK_VERSION_STRING);
         bool wasInitialized = pImpl_->isInitialized();
         bool ok = pImpl_->initialize(config);
 
@@ -332,6 +333,8 @@ namespace elink
         {
             pImpl_->setupEventForwarding(eventBus_);
         }
+
+        ELEGOO_LOG_INFO("ElegooLink initialization {}", ok ? "succeeded" : "failed");
 
         return ok;
     }
@@ -342,9 +345,11 @@ namespace elink
         {
             return;
         }
+        ELEGOO_LOG_INFO("Cleaning up ElegooLink SDK");
         // Teardown event forwarding before cleanup
         pImpl_->teardownEventForwarding();
         pImpl_->cleanup();
+        ELEGOO_LOG_INFO("ElegooLink cleanup completed");
     }
 
     bool ElegooLink::isInitialized() const
@@ -733,6 +738,17 @@ namespace elink
                 "ElegooLink is not initialized");
         }
         return getCloudService().renewLicense(params);
+    }
+
+    VoidResult ElegooLink::ping()
+    {
+        if (!pImpl_->isInitialized())
+        {
+            return VoidResult::Error(
+                ELINK_ERROR_CODE::NOT_INITIALIZED,
+                "ElegooLink is not initialized");
+        }
+        return getCloudService().ping();
     }
 #endif // ENABLE_CLOUD_FEATURES
     // ========== File Management ==========

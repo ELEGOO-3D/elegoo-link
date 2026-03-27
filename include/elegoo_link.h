@@ -231,6 +231,8 @@ namespace elink
          * @return Operation result
          */
         RenewLicenseResult renewLicense(const RenewLicenseParams &params);
+
+        VoidResult ping();
 #endif
         // ========== File Management ==========
 

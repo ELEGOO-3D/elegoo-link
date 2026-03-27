@@ -1442,7 +1442,7 @@ namespace elink
                                 std::string linkKey = JsonUtils::safeGetString(item, "reportLinkKey", "");
                                 std::string reportValue = JsonUtils::safeGetString(item, "reportValue", "");
                                 int64_t reportDataRefId = std::stoll(JsonUtils::safeGetString(item, "reportDataRefId", "0"));
-                                int64_t updateTime= JsonUtils::safeGetInt64(item, "updateTime", 0);
+                                int64_t updateTime = JsonUtils::safeGetInt64(item, "updateTime", 0);
 
                                 // Store timestamp for this field
                                 if (!linkKey.empty() && reportDataRefId > 0)
@@ -1455,7 +1455,7 @@ namespace elink
                                     ELEGOO_LOG_WARN("[TIMESTAMP-HTTP] Field {}.{} has reportDataRefId=0 or empty!", key, linkKey);
                                 }
 
-                                if(key == "machine_status")
+                                if (key == "machine_status")
                                 {
                                     ELEGOO_LOG_INFO("[{}]Received machine status report: key={}, linkKey={}, reportValue={}, reportDataRefId={}, updateTime={}", StringUtils::maskString(printerId), key, linkKey, reportValue, reportDataRefId, updateTime);
                                 }
@@ -2191,6 +2191,51 @@ namespace elink
         {
             ELEGOO_LOG_ERROR("Failed to renew license: {}", e.what());
             return RenewLicenseResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to renew license");
+        }
+    }
+
+    VoidResult HttpService::ping()
+    {
+        //  /api/v1/account-center-server/account-auth/auth-check
+        auto httpClient = getHttpClient();
+        if (!httpClient)
+        {
+            ELEGOO_LOG_WARN("HTTP client not initialized, cannot perform ping");
+            return VoidResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP client not initialized");
+        }
+        try
+        {
+            BizResult<HttpResponse> result = httpClient->get(buildUrlPath("/api/v1/account-center-server/account-auth/auth-check"));
+            if (!result.isSuccess())
+            {
+                ELEGOO_LOG_ERROR("Ping failed: {}", result.message);
+                return VoidResult::Error(result.code, result.message);
+            }
+            const auto &response = result.value();
+            auto handleResult = handleResponse(response);
+            if (!handleResult.isSuccess())
+            {
+                return handleResult;
+            }
+
+            nlohmann::json jsonResponse = nlohmann::json::parse(response.body);
+            int code = JsonUtils::safeGetInt(jsonResponse, "code", -1);
+
+            if (code == 0)
+            {
+                return VoidResult::Success();
+            }
+            else
+            {
+                std::string msg = JsonUtils::safeGetString(jsonResponse, "msg", "Unknown error");
+                ELEGOO_LOG_ERROR("Failed to renew license, code: {}, message: {}", code, msg);
+                return serverErrorToNetworkError(code);
+            }
+        }
+        catch (const std::exception &e)
+        {
+            ELEGOO_LOG_ERROR("Ping failed: {}", e.what());
+            return VoidResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Ping failed");
         }
     }
 }

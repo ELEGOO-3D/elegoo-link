@@ -153,7 +153,7 @@ namespace elink
                     VoidResult loginResult = m_rtmClient->login(credential.rtmToken);
                     if (loginResult.isSuccess())
                     {
-                        ELEGOO_LOG_INFO("RTM client logged in successfully for user: {} with process mutex protection", StringUtils::maskString(credential.rtmUserId));
+                        ELEGOO_LOG_INFO("RTM client logged in successfully for user: {}", StringUtils::maskString(credential.rtmUserId));
                         subscribeToChannels(credential);
                         return VoidResult::Success();
                     }

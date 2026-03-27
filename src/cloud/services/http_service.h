@@ -99,6 +99,7 @@ namespace elink
 
         std::string buildUrlPath(const std::string &path);
 
+        VoidResult ping();
     private:
         // Internal methods
         VoidResult initializeClient(std::string userAgent, std::string baseUrl, std::string caCertPath);
