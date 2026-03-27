@@ -676,6 +676,10 @@ namespace elink
     {
         if (!m_backgroundTasksRunning.load())
         {
+            if (m_connectionMonitorThread.joinable())
+            {
+                m_connectionMonitorThread.join();
+            }
             return; // Already stopped
         }
 
@@ -719,9 +723,15 @@ namespace elink
                 refreshCredentials();
                 retryConnections();
 
-                if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
                 {
-                    continue; // Skip further processing if unauthorized
+                    // If we are unauthorized or RTM is logged in from another device, skip further processing to avoid unnecessary load and logs.
+                    std::shared_lock<std::shared_mutex> servicesLock(m_servicesMutex);
+                    if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED ||
+                        m_cachedHttpCredential.accessToken.empty() ||
+                        m_rtmService->isLoginOtherDevice())
+                    {
+                        continue; // Skip further processing if unauthorized
+                    }
                 }
 
                 printerStatusRefreshCounter++;
@@ -1155,7 +1165,7 @@ namespace elink
                     {
                         m_rtmConnectFailureCount.store(0);
                     }
-                    else if (!m_rtmService->isLoginOtherDevice())
+                    else
                     {
                         auto agoraResult = m_httpService->getAgoraCredential();
                         if (agoraResult.isSuccess())
@@ -1278,6 +1288,16 @@ namespace elink
                     ELEGOO_LOG_WARN("RTM logged in from another device, skipping reconnection attempts.");
                     setOnlineStatus(false);
                     m_mqttService->disconnect();
+                    m_rtmConnectFailureCount.store(0);
+                    {
+                        std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                        m_agoraCredential = nullptr;
+                    }
+                    m_mqttConnectFailureCount.store(0);
+                    {
+                        std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                        m_mqttCredential = nullptr;
+                    }
                     return;
                 }
 

@@ -202,7 +202,7 @@ namespace elink
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        if (m_mqttClient)
+        if (m_mqttClient && m_mqttClient->isConnected())
         {
             try
             {
