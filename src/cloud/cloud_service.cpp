@@ -66,6 +66,28 @@ namespace elink
                     {
                         // Update online status based on connection state
                         setOnlineStatus(isConnected);
+                    }else{
+                        // If disconnected due to same UID login, treat it as unauthorized and update status accordingly
+                        if(reason == RtmConnectionChangeReason::RTM_LINK_STATE_CHANGE_REASON_SAME_UID_LOGIN)
+                        {
+                            setOnlineStatus(false);
+
+                            m_lastHttpErrorCode = ELINK_ERROR_CODE::SERVER_UNAUTHORIZED;
+                            {
+                                std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+                                m_mqttService->disconnect();
+                            }
+                            m_rtmConnectFailureCount.store(0);
+                            {
+                                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                m_agoraCredential = nullptr;
+                            }
+                            m_mqttConnectFailureCount.store(0);
+                            {
+                                std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
+                                m_mqttCredential = nullptr;
+                            }
+                        }
                     } });
             }
         }
@@ -287,6 +309,14 @@ namespace elink
 
     GetUserInfoResult CloudService::getUserInfo(const GetUserInfoParams &params)
     {
+        if(!m_initialized.load())
+        {
+            return GetUserInfoResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "Cloud service not initialized");
+        }
+        if(m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+        {
+            return GetUserInfoResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized access - invalid or expired credentials");
+        }
         std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
         GetUserInfoResult result;
         if (!m_httpService)
@@ -1295,18 +1325,6 @@ namespace elink
                 if (m_rtmService && m_rtmService->isLoginOtherDevice())
                 {
                     ELEGOO_LOG_WARN("RTM logged in from another device, skipping reconnection attempts.");
-                    setOnlineStatus(false);
-                    m_mqttService->disconnect();
-                    m_rtmConnectFailureCount.store(0);
-                    {
-                        std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
-                        m_agoraCredential = nullptr;
-                    }
-                    m_mqttConnectFailureCount.store(0);
-                    {
-                        std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
-                        m_mqttCredential = nullptr;
-                    }
                     return;
                 }
 
