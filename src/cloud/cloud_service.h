@@ -263,8 +263,6 @@ namespace elink
         std::atomic<int> m_rtmConnectFailureCount{0};
         std::atomic<int> m_mqttConnectFailureCount{0};
 
-        ELINK_ERROR_CODE m_lastHttpErrorCode = ELINK_ERROR_CODE::SUCCESS;
-
         // File upload status tracking
         std::map<std::string, bool> m_uploadingFiles; // key: printerId, value: is uploading
         mutable std::mutex m_uploadingFilesMutex;     // Protect upload status

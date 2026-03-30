@@ -72,10 +72,16 @@ namespace elink
                         {
                             setOnlineStatus(false);
 
-                            m_lastHttpErrorCode = ELINK_ERROR_CODE::SERVER_UNAUTHORIZED;
                             {
                                 std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
-                                m_mqttService->disconnect();
+                                if (m_httpService)
+                                {
+                                    m_httpService->setLastErrorCode(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED);
+                                }
+                                if (m_mqttService)
+                                {
+                                    m_mqttService->disconnect();
+                                }
                             }
                             m_rtmConnectFailureCount.store(0);
                             {
@@ -309,19 +315,19 @@ namespace elink
 
     GetUserInfoResult CloudService::getUserInfo(const GetUserInfoParams &params)
     {
-        if(!m_initialized.load())
+        if (!m_initialized.load())
         {
             return GetUserInfoResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "Cloud service not initialized");
-        }
-        if(m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
-        {
-            return GetUserInfoResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized access - invalid or expired credentials");
         }
         std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
         GetUserInfoResult result;
         if (!m_httpService)
         {
             return GetUserInfoResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP service not initialized");
+        }
+        if (m_httpService->getLastErrorCode() == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+        {
+            return GetUserInfoResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized access - invalid or expired credentials");
         }
         result = m_httpService->getUserInfo();
         return result;
@@ -360,7 +366,6 @@ namespace elink
             }
         }
 
-        m_lastHttpErrorCode = ELINK_ERROR_CODE::SUCCESS;
         m_rtmConnectFailureCount.store(0);
         m_mqttConnectFailureCount.store(0);
 
@@ -435,7 +440,6 @@ namespace elink
         auto result = m_httpService->refreshCredential(credential);
         if (result.isSuccess())
         {
-            m_lastHttpErrorCode = ELINK_ERROR_CODE::SUCCESS;
             m_rtmConnectFailureCount.store(0);
             m_mqttConnectFailureCount.store(0);
             m_cachedHttpCredential = result.data.value();
@@ -555,17 +559,16 @@ namespace elink
     {
         GetPrinterListResult result;
 
-        if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
-        {
-            return GetPrinterListResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized: Invalid HTTP credentials");
-        }
-
         // First get the printer list from HTTP service, without holding lock
         {
             std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
             if (!m_httpService)
             {
                 return GetPrinterListResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP service not initialized");
+            }
+            if (m_httpService->getLastErrorCode() == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+            {
+                return GetPrinterListResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized: Invalid HTTP credentials");
             }
             result = m_httpService->getPrinters();
         }
@@ -760,13 +763,20 @@ namespace elink
                 {
                     // If we are unauthorized or RTM is logged in from another device, skip further processing to avoid unnecessary load and logs.
                     std::shared_lock<std::shared_mutex> servicesLock(m_servicesMutex);
-                    if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED ||
+                    if (!m_httpService || !m_rtmService)
+                    {
+                        m_backgroundTasksRunning.store(false);
+                        ELEGOO_LOG_WARN("Stopping background tasks because required services are unavailable.");
+                        return;
+                    }
+                    auto lastHttpErrorCode = m_httpService->getLastErrorCode();
+                    if (lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED ||
                         m_cachedHttpCredential.accessToken.empty() ||
                         m_rtmService->isLoginOtherDevice())
                     {
                         m_backgroundTasksRunning.store(false); // Stop background tasks to prevent repeated failures and logs
                         ELEGOO_LOG_WARN("Stopping background tasks due to unauthorized state or RTM login from another device. lastHttpErrorCode={}, accessTokenEmpty={}, rtmLoginOtherDevice={}",
-                                        static_cast<int>(m_lastHttpErrorCode),
+                                        static_cast<int>(lastHttpErrorCode),
                                         m_cachedHttpCredential.accessToken.empty(),
                                         m_rtmService->isLoginOtherDevice());
                         return;
@@ -885,7 +895,6 @@ namespace elink
         {
             if (onlineResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
             {
-                m_lastHttpErrorCode = ELINK_ERROR_CODE::SERVER_UNAUTHORIZED;
                 if (adapterPtr && adapterPtr->isConnected())
                 {
                     adapterPtr->setConnected(false);
@@ -977,7 +986,7 @@ namespace elink
     void CloudService::refreshPrinterStatuses()
     {
         constexpr int FULL_STATUS_REFRESH_INTERVAL_SECONDS = 180;
-        constexpr int OFFLINE_ONLINE_STATUS_REFRESH_INTERVAL_SECONDS = 300;
+        constexpr int OFFLINE_ONLINE_STATUS_REFRESH_INTERVAL_SECONDS = 180;
 
         // Check if MQTT is connected
         bool mqttConnected = false;
@@ -989,6 +998,12 @@ namespace elink
                 mqttConnected = m_mqttService->isConnected();
                 lastMqttConnectedTime = m_mqttService->getLastConnectedTime();
             }
+        }
+
+        if (!mqttConnected)
+        {
+            ELEGOO_LOG_DEBUG("MQTT is not connected, skipping printer status refresh to avoid unnecessary HTTP requests");
+            return;
         }
 
         // Collect printers that need refresh
@@ -1100,9 +1115,8 @@ namespace elink
                 }
             }
 
-            // Only refresh if MQTT is connected, to avoid unnecessary HTTP requests when device is offline.
             // If MQTT is disconnected, we will rely on the periodic online/offline status check to trigger refresh when device comes back online.
-            if (mqttConnected && (needsRefresh || isForceRefreshRequested))
+            if (needsRefresh || isForceRefreshRequested)
             {
                 if (isForceRefreshRequested)
                 {
@@ -1182,7 +1196,7 @@ namespace elink
             std::shared_lock<std::shared_mutex> servicesLock(m_servicesMutex);
             if (m_httpService)
             {
-                if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
+                if (m_httpService->getLastErrorCode() == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
                 {
                     ELEGOO_LOG_DEBUG("Previous HTTP error was unauthorized, skipping credential refresh.");
                     {
@@ -1237,7 +1251,6 @@ namespace elink
                         else if (agoraResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
                         {
                             ELEGOO_LOG_WARN("HTTP credential token expired, user may need to re-login.");
-                            m_lastHttpErrorCode = agoraResult.code;
 
                             m_rtmConnectFailureCount.store(0);
                             {
@@ -1274,7 +1287,6 @@ namespace elink
                         else if (mqttResult.code == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED)
                         {
                             ELEGOO_LOG_WARN("HTTP credential token expired, user may need to re-login.");
-                            m_lastHttpErrorCode = mqttResult.code;
                             m_mqttConnectFailureCount.store(0);
                             {
                                 std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
@@ -1897,6 +1909,13 @@ namespace elink
                 ELEGOO_LOG_ERROR("Printer with SN {} not found for connection", StringUtils::maskString(serialNumber));
                 return ConnectPrinterResult::Error(ELINK_ERROR_CODE::PRINTER_NOT_FOUND, "Printer not found: " + serialNumber);
             }
+
+            auto adapterIt = m_messageAdapters.find(it->printerId);
+            if (adapterIt != m_messageAdapters.end() && !adapterIt->second->isConnected())
+            {
+                ELEGOO_LOG_WARN("Printer {} is offline", StringUtils::maskString(params.printerId));
+            }
+            
             printer = *it;
             printer.printerId = params.printerId;
         }
@@ -2237,11 +2256,6 @@ namespace elink
             return PrinterStatusResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
         }
 
-        if (m_lastHttpErrorCode == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
-        {
-            return PrinterStatusResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized: Invalid HTTP credentials");
-        }
-
         BizResult<nlohmann::json> result;
         // Get printer status
         {
@@ -2250,6 +2264,10 @@ namespace elink
             if (!validationResult.isSuccess())
             {
                 return PrinterStatusResult::Error(validationResult.code, validationResult.message);
+            }
+            if (m_httpService->getLastErrorCode() == ELINK_ERROR_CODE::SERVER_UNAUTHORIZED || m_cachedHttpCredential.accessToken.empty())
+            {
+                return PrinterStatusResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, "Unauthorized: Invalid HTTP credentials");
             }
 
             result = m_httpService->getPrinterStatus(params.printerId);

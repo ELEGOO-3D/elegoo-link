@@ -36,6 +36,9 @@ namespace elink
         VoidResult clearCredential();
         BizResult<HttpCredential> refreshCredential(const HttpCredential &credential);
         const HttpCredential &getCredential() const;
+        ELINK_ERROR_CODE getLastErrorCode() const;
+        void setLastErrorCode(ELINK_ERROR_CODE code);
+        void clearLastErrorCode();
         VoidResult setRegion(const SetRegionParams &params);
         BizResult<UserInfo> getUserInfo();
         VoidResult logout();
@@ -151,5 +154,6 @@ namespace elink
          * @brief Base URL
          */
         std::string m_baseUrl;
+        std::atomic<ELINK_ERROR_CODE> m_lastErrorCode{ELINK_ERROR_CODE::SUCCESS};
     };
 }

@@ -93,6 +93,7 @@ namespace elink
     {
         std::lock_guard<std::mutex> lock(m_clientMutex);
         m_credential = credential;
+        clearLastErrorCode();
 
         if (m_httpClient)
         {
@@ -106,6 +107,7 @@ namespace elink
     {
         std::lock_guard<std::mutex> lock(m_clientMutex);
         m_credential = HttpCredential{};
+        clearLastErrorCode();
 
         if (m_httpClient)
         {
@@ -119,6 +121,21 @@ namespace elink
     {
         std::lock_guard<std::mutex> lock(m_clientMutex);
         return m_credential;
+    }
+
+    ELINK_ERROR_CODE HttpService::getLastErrorCode() const
+    {
+        return m_lastErrorCode.load(std::memory_order_relaxed);
+    }
+
+    void HttpService::setLastErrorCode(ELINK_ERROR_CODE code)
+    {
+        m_lastErrorCode.store(code, std::memory_order_relaxed);
+    }
+
+    void HttpService::clearLastErrorCode()
+    {
+        setLastErrorCode(ELINK_ERROR_CODE::SUCCESS);
     }
 
     VoidResult HttpService::setRegion(const SetRegionParams &params)
@@ -189,30 +206,43 @@ namespace elink
         //   ErrorCode DEMO_DENY = new ErrorCode(901, "Demo mode, write operations are prohibited");
         //   ErrorCode UNKNOWN = new ErrorCode(999, "Unknown error");
         std::string outMessage;
+        ELINK_ERROR_CODE errorCode = ELINK_ERROR_CODE::SERVER_UNKNOWN_ERROR;
         switch (serverCode)
         {
         case 0:
-            outMessage = "Success";
+            clearLastErrorCode();
             return VoidResult::Success();
         case 401:
             outMessage = "Unauthorized";
-            return VoidResult::Error(ELINK_ERROR_CODE::SERVER_UNAUTHORIZED, outMessage);
+            errorCode = ELINK_ERROR_CODE::SERVER_UNAUTHORIZED;
+            break;
         case 403:
             outMessage = "Forbidden";
-            return VoidResult::Error(ELINK_ERROR_CODE::SERVER_FORBIDDEN, outMessage);
+            errorCode = ELINK_ERROR_CODE::SERVER_FORBIDDEN;
+            break;
         case 429:
             outMessage = "Too Many Requests";
-            return VoidResult::Error(ELINK_ERROR_CODE::SERVER_TOO_MANY_REQUESTS, outMessage);
+            errorCode = ELINK_ERROR_CODE::SERVER_TOO_MANY_REQUESTS;
+            break;
         case 30010:
             outMessage = "Invalid pin Code";
-            return VoidResult::Error(ELINK_ERROR_CODE::INVALID_PIN_CODE, outMessage);
+            errorCode = ELINK_ERROR_CODE::INVALID_PIN_CODE;
+            break;
         case 30012:
             outMessage = "PIN code does not match";
-            return VoidResult::Error(ELINK_ERROR_CODE::SERVER_PIN_CODE_MISMATCH, outMessage);
+            errorCode = ELINK_ERROR_CODE::SERVER_PIN_CODE_MISMATCH;
+            break;
         default:
             outMessage = "Unknown Error";
-            return VoidResult::Error(ELINK_ERROR_CODE::SERVER_UNKNOWN_ERROR, StringUtils::formatErrorMessage(serverCode));
+            errorCode = ELINK_ERROR_CODE::SERVER_UNKNOWN_ERROR;
+            break;
         }
+        setLastErrorCode(errorCode);
+        if (errorCode == ELINK_ERROR_CODE::SERVER_UNKNOWN_ERROR)
+        {
+            return VoidResult::Error(errorCode, StringUtils::formatErrorMessage(serverCode));
+        }
+        return VoidResult::Error(errorCode, outMessage);
     }
     VoidResult HttpService::handleResponse(const HttpResponse &result)
     {
@@ -290,6 +320,12 @@ namespace elink
             }
 
             const auto &response = result.value();
+            auto handleResult = handleResponse(response);
+            if (!handleResult.isSuccess())
+            {
+                return BizResult<HttpCredential>::Error(handleResult.code, handleResult.message);
+            }
+
             nlohmann::json jsonResponse = nlohmann::json::parse(response.body);
 
             int code = JsonUtils::safeGetInt(jsonResponse, "code", -1);
@@ -305,6 +341,7 @@ namespace elink
 
                 m_httpClient->setBearerToken(m_credential.accessToken);
 
+                clearLastErrorCode();
                 ELEGOO_LOG_INFO("HTTP token refreshed successfully");
                 return BizResult<HttpCredential>::Ok(m_credential);
             }
