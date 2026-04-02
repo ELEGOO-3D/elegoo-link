@@ -173,10 +173,10 @@ namespace elink
                     const auto &printerId = event->status.printerId;
                     const auto &currentState = event->status.printerStatus.state;
                     const auto &currentSubState = event->status.printerStatus.subState;
-                    
+
                     std::lock_guard<std::mutex> lock(printerStateTrackersMutex_);
-                    
-                    if(printerStateTrackers_.find(printerId) == printerStateTrackers_.end())
+
+                    if (printerStateTrackers_.find(printerId) == printerStateTrackers_.end())
                     {
                         return;
                     }
@@ -184,23 +184,25 @@ namespace elink
                     // Get or create state tracker for this printer
                     auto &tracker = printerStateTrackers_[printerId];
                     // Check if state or subState has changed
-                    if (tracker.firstUpdate || 
-                        currentState != tracker.lastState || 
+                    if (tracker.firstUpdate ||
+                        currentState != tracker.lastState ||
                         currentSubState != tracker.lastSubState)
                     {
-                        if(!tracker.firstUpdate)
+                        if (!tracker.firstUpdate)
                         {
                             ELEGOO_LOG_INFO("[Printer: {}] State changed: {} -> {}, SubState: {} -> {}",
-                                StringUtils::maskString(printerId),
-                                static_cast<int>(tracker.lastState),
-                                static_cast<int>(currentState),
-                                static_cast<int>(tracker.lastSubState),
-                                static_cast<int>(currentSubState));
-                        }else{
+                                            StringUtils::maskString(printerId),
+                                            static_cast<int>(tracker.lastState),
+                                            static_cast<int>(currentState),
+                                            static_cast<int>(tracker.lastSubState),
+                                            static_cast<int>(currentSubState));
+                        }
+                        else
+                        {
                             ELEGOO_LOG_INFO("[Printer: {}] Initial state: {}, SubState: {}",
-                                StringUtils::maskString(printerId),
-                                static_cast<int>(currentState),
-                                static_cast<int>(currentSubState));
+                                            StringUtils::maskString(printerId),
+                                            static_cast<int>(currentState),
+                                            static_cast<int>(currentSubState));
                         }
                         // Update tracker
                         tracker.lastState = currentState;
@@ -302,7 +304,7 @@ namespace elink
         ElegooLink::Config config_;
         bool initialized_;
         std::map<std::string, PrinterStateTracker> printerStateTrackers_; // Track state for each printer
-        std::mutex printerStateTrackersMutex_; // Protect printerStateTrackers_
+        std::mutex printerStateTrackersMutex_;                            // Protect printerStateTrackers_
     };
 
     // ========== ElegooLink Implementation ==========
@@ -749,6 +751,17 @@ namespace elink
                 "ElegooLink is not initialized");
         }
         return getCloudService().ping();
+    }
+
+    GetExceptionListResult ElegooLink::getExceptionList(const GetExceptionListParams &params)
+    {
+        if (!pImpl_->isInitialized())
+        {
+            return GetExceptionListResult::Error(
+                ELINK_ERROR_CODE::NOT_INITIALIZED,
+                "ElegooLink is not initialized");
+        }
+        return getCloudService().getExceptionList(params);
     }
 #endif // ENABLE_CLOUD_FEATURES
     // ========== File Management ==========

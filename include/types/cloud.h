@@ -167,6 +167,26 @@ namespace elink
     };
 
     using PrintTaskListResult = BizResult<PrintTaskListData>;
+    
+
+    using GetExceptionListParams = PrintTaskListParams;
+    struct ExceptionDetail
+    {
+        std::string Id;    // Exception ID
+        std::string refId; // Related ID, e.g., print exception ID
+        std::string code;  // Exception code
+        int level;          // Exception level
+        int64_t time;       // Exception time (timestamp/seconds)
+    };
+
+    struct ExceptionListData
+    {
+        std::vector<ExceptionDetail> exceptionList; // Exception detail list
+        int total = 0;                     // Total number of exceptions
+    };
+
+    using GetExceptionListResult = BizResult<ExceptionListData>;
+
 
     /**
      * Batch delete historical print tasks request parameters

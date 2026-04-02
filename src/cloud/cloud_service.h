@@ -94,6 +94,8 @@ namespace elink
 
         DeletePrintTasksResult deletePrintTasks(const DeletePrintTasksParams &params);
 
+        GetExceptionListResult getExceptionList(const GetExceptionListParams &params);
+        
         StartPrintResult startPrint(const StartPrintParams &params);
         VoidResult stopPrint(const StopPrintParams &params);
         VoidResult pausePrint(const PausePrintParams &params);

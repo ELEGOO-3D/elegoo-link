@@ -233,6 +233,8 @@ namespace elink
         RenewLicenseResult renewLicense(const RenewLicenseParams &params);
 
         VoidResult ping();
+
+        GetExceptionListResult getExceptionList(const GetExceptionListParams &params);
 #endif
         // ========== File Management ==========
 

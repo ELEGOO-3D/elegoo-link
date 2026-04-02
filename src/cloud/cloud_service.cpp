@@ -1915,7 +1915,7 @@ namespace elink
             {
                 ELEGOO_LOG_WARN("Printer {} is offline", StringUtils::maskString(params.printerId));
             }
-            
+
             printer = *it;
             printer.printerId = params.printerId;
         }
@@ -2010,6 +2010,24 @@ namespace elink
         }
 
         return m_httpService->deletePrintTasks(params);
+    }
+
+    GetExceptionListResult CloudService::getExceptionList(const GetExceptionListParams &params)
+    {
+        if (params.printerId.empty())
+        {
+            return GetExceptionListResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
+        }
+
+        std::shared_lock<std::shared_mutex> lock(m_servicesMutex);
+
+        auto validationResult = validateHttpServiceState();
+        if (!validationResult.isSuccess())
+        {
+            return validationResult;
+        }
+
+        return m_httpService->getExceptionList(params);
     }
 
     // Service state check helper functions

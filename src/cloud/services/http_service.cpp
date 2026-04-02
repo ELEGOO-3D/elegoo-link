@@ -1420,6 +1420,103 @@ namespace elink
         }
     }
 
+    GetExceptionListResult HttpService::getExceptionList(const GetExceptionListParams &params)
+    {
+        if (params.printerId.empty())
+        {
+            return GetExceptionListResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Printer ID cannot be empty");
+        }
+
+        auto httpClient = getHttpClient();
+        if (!httpClient)
+        {
+            ELEGOO_LOG_WARN("HTTP client not initialized, cannot get exception list");
+            return GetExceptionListResult::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP client not initialized");
+        }
+
+        std::string serialNumber = getSerialNumberByPrinterId(params.printerId);
+        BizResult<HttpResponse> result = httpClient->get(buildUrlPath("/api/v1/device-management-server/device/event-data/page?deviceCode=" + UrlUtils::UrlEncode(serialNumber) + "&pageNo=" + std::to_string(params.pageNumber) + "&pageSize=" + std::to_string(params.pageSize) + "&eventKey=exception" + "&sort=create_time,desc"));
+        if (!result.isSuccess())
+        {
+            ELEGOO_LOG_ERROR("Failed to get exception list: {}", result.message);
+            return GetExceptionListResult::Error(result.code, result.message);
+        }
+
+        const auto &response = result.value();
+        auto handleResult = handleResponse(response);
+        if (!handleResult.isSuccess())
+        {
+            return handleResult;
+        }
+        try
+        {
+            nlohmann::json jsonResponse = nlohmann::json::parse(response.body);
+            int code = JsonUtils::safeGetInt(jsonResponse, "code", -1);
+
+            if (code == 0)
+            {
+                if (jsonResponse.contains("data") && jsonResponse["data"].is_object())
+                {
+                    nlohmann::json data = jsonResponse["data"];
+                    ExceptionListData exceptionListData;
+                    exceptionListData.total = JsonUtils::safeGetInt(data, "total", 0);
+                    if (data.contains("list") && data["list"].is_array())
+                    {
+                        for (const auto &item : data["list"])
+                        {
+                            ExceptionDetail exceptionDetail;
+                            exceptionDetail.Id = JsonUtils::safeGetString(item, "id", "");
+                            exceptionDetail.refId = JsonUtils::safeGetString(item, "eventDataRefId", "");
+                            if (item.contains("eventValue") && item["eventValue"].is_string())
+                            {
+                                std::string eventValueStr = item["eventValue"].get<std::string>();
+                                try
+                                {
+                                    nlohmann::json eventValueJson = nlohmann::json::parse(eventValueStr);
+                                    if (eventValueJson.contains("code") && eventValueJson["code"].is_number_integer())
+                                    {
+                                        exceptionDetail.code = std::to_string(JsonUtils::safeGetInt(eventValueJson, "code", 0));
+                                    }
+                                    else if (eventValueJson.contains("code") && eventValueJson["code"].is_string())
+                                    {
+                                        std::string codeStr = JsonUtils::safeGetString(eventValueJson, "code", "0");
+                                        exceptionDetail.code = codeStr;
+                                    }
+                                    exceptionDetail.level = JsonUtils::safeGetInt(eventValueJson, "level", 0);
+                                    exceptionDetail.time = JsonUtils::safeGetInt64(eventValueJson, "time", 0);
+                                }
+                                catch (const std::exception &e)
+                                {
+                                    ELEGOO_LOG_WARN("Failed to parse eventValue JSON for exception {}: {}", exceptionDetail.Id, e.what());
+                                }
+                                exceptionListData.exceptionList.push_back(exceptionDetail);
+                            }
+                        }
+                    }
+
+                    GetExceptionListResult listResult;
+                    listResult.data = std::move(exceptionListData);
+                    return listResult;
+                }
+                else
+                {
+                    ELEGOO_LOG_ERROR("No data in exception list response");
+                    return GetExceptionListResult::Error(ELINK_ERROR_CODE::SERVER_INVALID_RESPONSE, "No data in response");
+                }
+            }
+            else
+            {
+                ELEGOO_LOG_ERROR("Failed to get exception list, code: {}", code);
+                return serverErrorToNetworkError(code);
+            }
+        }
+        catch (const std::exception &e)
+        {
+            ELEGOO_LOG_ERROR("Failed to parse exception list response: {}", e.what());
+            return GetExceptionListResult::Error(ELINK_ERROR_CODE::UNKNOWN_ERROR, "Failed to parse response");
+        }
+    }
+
     BizResult<nlohmann::json> HttpService::getPrinterStatus(const std::string &printerId)
     {
         if (printerId.empty())

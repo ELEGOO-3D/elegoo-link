@@ -79,6 +79,8 @@ namespace elink
 
         DeletePrintTasksResult deletePrintTasks(const DeletePrintTasksParams &params);
 
+        GetExceptionListResult getExceptionList(const GetExceptionListParams &params);
+
         BizResult<nlohmann::json> getPrinterStatus(const std::string &printerId);
 
         BizResult<std::string> uploadFile(const std::string &fileName, const std::string &filePath, std::function<bool(uint64_t current, uint64_t total)> progressCallback = nullptr);
