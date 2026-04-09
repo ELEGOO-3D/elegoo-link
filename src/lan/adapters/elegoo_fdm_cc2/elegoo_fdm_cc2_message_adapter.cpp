@@ -1261,6 +1261,14 @@ namespace elink
         {
             for (auto &[key, value] : source.items())
             {
+                // exception_code is a special field that should be directly overwritten without deep merge, 
+                // to ensure error information is always up-to-date and not accidentally preserved from old status
+                if (key == "exception_code")
+                {
+                    target[key] = value;
+                    continue;
+                }
+
                 if (value.is_object() && target.contains(key) && target[key].is_object())
                 {
                     // Recursively merge objects

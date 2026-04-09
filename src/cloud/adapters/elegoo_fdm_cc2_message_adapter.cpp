@@ -6,6 +6,16 @@
 
 namespace elink
 {
+    namespace
+    {
+        constexpr const char *ATOMIC_EXCEPTION_SNAPSHOT_PATH = "exception.exception_code";
+
+        bool isAtomicSnapshotField(const std::string &fieldPath)
+        {
+            return fieldPath == ATOMIC_EXCEPTION_SNAPSHOT_PATH;
+        }
+    }
+
     CloudElegooFdmCC2MessageAdapter::CloudElegooFdmCC2MessageAdapter(const PrinterInfo &printerInfo)
         : ElegooFdmCC2MessageAdapter(printerInfo)
     {
@@ -189,7 +199,8 @@ namespace elink
                 for (auto &[subKey, timestamp] : value.items())
                 {
                     std::string fullPath = key + "." + subKey;
-                    timestamps[fullPath] = JsonUtils::safeGetInt64(value, subKey, 0);
+                    int64_t fieldTimestamp = JsonUtils::safeGetInt64(value, subKey, 0);
+                    timestamps[fullPath] = fieldTimestamp;
                 }
             }
         }
@@ -245,11 +256,11 @@ namespace elink
             {
                 // Parse field path (e.g., "extruder.temperature")
                 auto dotPos = fieldPath.find('.');
-                if (dotPos == std::string::npos)
-                    continue;
+                bool treatAsLeafField = (dotPos == std::string::npos);
+                bool treatAsAtomicSnapshot = isAtomicSnapshotField(fieldPath);
 
-                std::string key = fieldPath.substr(0, dotPos);
-                std::string subKey = fieldPath.substr(dotPos + 1);
+                std::string key = treatAsLeafField ? fieldPath : fieldPath.substr(0, dotPos);
+                std::string subKey = treatAsLeafField ? std::string() : fieldPath.substr(dotPos + 1);
 
                 // Get cached timestamp
                 auto it = fieldTimestamps_.find(fieldPath);
@@ -261,8 +272,46 @@ namespace elink
                     // Try to restore from full cache first, then partial cache
                     bool restored = false;
 
-                    if (hasCache && currentCache.contains(key) && currentCache[key].is_object() &&
-                        currentCache[key].contains(subKey))
+                    if (treatAsAtomicSnapshot && hasCache && currentCache.contains(key) &&
+                        currentCache[key].is_object() && currentCache[key].contains(subKey))
+                    {
+                        if (!result.contains(key) || !result[key].is_object())
+                        {
+                            result[key] = nlohmann::json::object();
+                        }
+                        result[key][subKey] = currentCache[key][subKey];
+                        restored = true;
+                        ELEGOO_LOG_DEBUG("[TIMESTAMP] HTTP field '{}': REJECTED httpTs={} < cachedTs={}, kept full cache value",
+                                         fieldPath, httpTs, cachedTs);
+                    }
+                    else if (treatAsAtomicSnapshot && hasPartial && partialCache.contains(key) &&
+                             partialCache[key].is_object() && partialCache[key].contains(subKey))
+                    {
+                        if (!result.contains(key) || !result[key].is_object())
+                        {
+                            result[key] = nlohmann::json::object();
+                        }
+                        result[key][subKey] = partialCache[key][subKey];
+                        restored = true;
+                        ELEGOO_LOG_DEBUG("[TIMESTAMP] HTTP field '{}': REJECTED httpTs={} < cachedTs={}, kept partial cache value",
+                                         fieldPath, httpTs, cachedTs);
+                    }
+                    else if (treatAsLeafField && hasCache && currentCache.contains(key))
+                    {
+                        result[key] = currentCache[key];
+                        restored = true;
+                        ELEGOO_LOG_DEBUG("[TIMESTAMP] HTTP field '{}': REJECTED httpTs={} < cachedTs={}, kept full cache value",
+                                         fieldPath, httpTs, cachedTs);
+                    }
+                    else if (treatAsLeafField && hasPartial && partialCache.contains(key))
+                    {
+                        result[key] = partialCache[key];
+                        restored = true;
+                        ELEGOO_LOG_DEBUG("[TIMESTAMP] HTTP field '{}': REJECTED httpTs={} < cachedTs={}, kept partial cache value",
+                                         fieldPath, httpTs, cachedTs);
+                    }
+                    else if (hasCache && currentCache.contains(key) && currentCache[key].is_object() &&
+                             currentCache[key].contains(subKey))
                     {
                         if (!result.contains(key) || !result[key].is_object())
                         {
@@ -339,6 +388,21 @@ namespace elink
 
             std::string fieldPath = currentPath.empty() ? key : currentPath + "." + key;
 
+            if (isAtomicSnapshotField(fieldPath))
+            {
+                if (shouldUpdateField(fieldPath, timestamp))
+                {
+                    target[key] = value;
+                    updateFieldTimestamp(fieldPath, timestamp);
+                    ELEGOO_LOG_TRACE("Updated field {} with timestamp {} using direct replacement", fieldPath, timestamp);
+                }
+                else
+                {
+                    ELEGOO_LOG_TRACE("Skipped field {} (cached_ts > delta_ts={})", fieldPath, timestamp);
+                }
+                continue;
+            }
+
             if (value.is_object())
             {
                 // Recursive merge for nested objects
@@ -382,6 +446,12 @@ namespace elink
                 }
 
                 std::string fieldPath = path.empty() ? key : path + "." + key;
+
+                if (isAtomicSnapshotField(fieldPath))
+                {
+                    updateFieldTimestamp(fieldPath, timestamp);
+                    continue;
+                }
 
                 if (value.is_object())
                 {

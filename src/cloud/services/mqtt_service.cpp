@@ -492,7 +492,7 @@ namespace elink
                         }
                     }
                 } else if (topic.find(TOPIC_EVENT_SUFFIX) != std::string::npos) {
-                    // {"id":1758012402867,"deviceCode":"F01NZQQZJS2ASC8","data":{"eventType":"deviceBind"},"ack":0
+                    // {"id":1758012402867,"deviceCode":"12345","data":{"eventType":"deviceBind"},"ack":0
                     if (jsonData.contains("deviceCode") && jsonData["deviceCode"].is_string() &&
                         jsonData.contains("data") && jsonData["data"].is_object()) 
                     {
