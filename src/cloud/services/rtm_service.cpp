@@ -8,6 +8,8 @@
 #include "types/internal/internal.h"
 #include "types/internal/json_serializer.h"
 #include <future>
+
+#define AGORA_APP_ID "d035320941e34cd5bc4ec106eff05580"
 namespace elink
 {
     RtmService::RtmService()
