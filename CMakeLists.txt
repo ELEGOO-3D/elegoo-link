@@ -54,6 +54,7 @@ if(MSVC)
     # Add UTF-8 support
     add_compile_options(/utf-8)
     add_compile_options(/wd4251)
+    add_compile_options(/MP)
 endif()
 
 # Set C++ standard
