@@ -461,7 +461,7 @@ namespace elink
             {
                 printerAttributes.model = JsonUtils::safeGet(result, "machine_model", printerInfo_.model);
             }
-            
+
             if (result.contains("software_version"))
             {
                 auto software_version = result["software_version"];
@@ -516,7 +516,7 @@ namespace elink
                 "sdcard",
                 true,
             }};
-        
+
         printerAttributes.capabilities.cameraCapabilities.supportsCamera = true;    // Assume printer supports camera
         printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = true; // Assume printer supports time-lapse
         printerAttributes.capabilities.systemCapabilities.canGetDiskInfo = true;
@@ -529,13 +529,13 @@ namespace elink
         printerAttributes.capabilities.printCapabilities.supportsTimeLapse = true;
 
         // Special handling for Centauri 2 model without time-lapse support
-        if(printerInfo_.model.find("Centauri 2") != std::string::npos)
+        if (printerInfo_.model.find("Centauri 2") != std::string::npos)
         {
-            printerAttributes.capabilities.printCapabilities.supportsTimeLapse = this->printerAttributes_ .capabilities.printCapabilities.supportsTimeLapse;
+            printerAttributes.capabilities.printCapabilities.supportsTimeLapse = this->printerAttributes_.capabilities.printCapabilities.supportsTimeLapse;
         }
 
         // In cloud mode, disable time-lapse support
-        if(printerInfo_.networkMode == NetworkMode::CLOUD)
+        if (printerInfo_.networkMode == NetworkMode::CLOUD)
         {
             printerAttributes.capabilities.cameraCapabilities.supportsTimeLapse = false;
         }
@@ -628,7 +628,7 @@ namespace elink
             else
             {
                 finalResult = mergeStatusUpdateJson(result);
-                if(finalResult.empty())
+                if (finalResult.empty())
                 {
                     ELEGOO_LOG_WARN("No cached full status JSON available for merge for printer {}", StringUtils::maskString(printerInfo_.printerId));
                     return std::optional<PrinterStatusData>();
@@ -956,11 +956,12 @@ namespace elink
                 finalStatus.printerStatus.supportProgress = true;
             }
 
-            if(!isConnected()){
+            if (!isConnected())
+            {
                 finalStatus.printerStatus.state = PrinterState::OFFLINE;
                 finalStatus.printerStatus.subState = PrinterSubState::NONE;
             }
-            
+
             if (finalStatus.printerStatus.state == PrinterState::PRINTING)
             {
                 // Parse print status info
@@ -1125,16 +1126,16 @@ namespace elink
 
                 // For C2, the camera component needs to be configured to be supported, so special handling is required.
                 // networkMode==CLOUD, time-lapse is not supported
-                if(this->printerInfo_.model.find("Centauri 2") != std::string::npos && printerInfo_.networkMode != NetworkMode::CLOUD)
+                if (this->printerInfo_.model.find("Centauri 2") != std::string::npos && printerInfo_.networkMode != NetworkMode::CLOUD)
                 {
-                    if(externalPrinter.contains("chassis_camera")&& externalPrinter["chassis_camera"].is_object())
+                    if (externalPrinter.contains("chassis_camera") && externalPrinter["chassis_camera"].is_object())
                     {
-                        if(externalPrinter["chassis_camera"].contains("configured") && externalPrinter["chassis_camera"]["configured"].is_number())
+                        if (externalPrinter["chassis_camera"].contains("configured") && externalPrinter["chassis_camera"]["configured"].is_number())
                         {
                             int configured = JsonUtils::safeGetInt(externalPrinter["chassis_camera"], "configured", 0);
                             bool previousSupport = this->printerAttributes_.capabilities.printCapabilities.supportsTimeLapse;
-                            bool support= (configured == 1);
-                            if(previousSupport != support)
+                            bool support = (configured == 1);
+                            if (previousSupport != support)
                             {
                                 ELEGOO_LOG_INFO("Printer {} camera time-lapse support changed to {}", StringUtils::maskString(printerInfo_.printerId), support);
                                 this->printerAttributes_.capabilities.printCapabilities.supportsTimeLapse = support;
@@ -1143,13 +1144,49 @@ namespace elink
                         }
                     }
                 }
-
             }
 
             if (finalResult.contains("canvas_info") && finalResult["canvas_info"].is_object())
             {
                 auto canvasStatusOpt = handleCanvasStatus(finalResult["canvas_info"]);
                 finalStatus.canvasStatus = canvasStatusOpt.value();
+            }
+
+            //  "exception":{
+            //     "exception_code": {
+            //         "1101":{
+            //           "time":123456789
+            //         }，
+            //         "803":{
+            //           "time":123456789
+            //         }
+            //       }
+            // }
+            if (finalResult.contains("exception") && finalResult["exception"].is_object())
+            {
+                auto exception = finalResult["exception"];
+                if (exception.contains("exception_code") && exception["excetion_code"].is_object())
+                {
+
+                    auto exceptionCodesJson = exception["exception_code"];
+
+                    for (auto &[codeStr, info] : exceptionCodesJson.items())
+                    {
+                        try
+                        {
+                            int code = std::stoi(codeStr);
+                            int64_t timestamp = JsonUtils::safeGetInt64(info, "time", 0);
+                            PrinterException printerException;
+                            printerException.code = code;
+                            printerException.timestamp = timestamp;
+                            finalStatus.exceptions.push_back(printerException);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            ELEGOO_LOG_ERROR("Failed to parse exception code: {}, error: {}", codeStr, e.what());
+                        }
+                    }
+                }
             }
         }
 
@@ -1261,7 +1298,7 @@ namespace elink
         {
             for (auto &[key, value] : source.items())
             {
-                // exception_code is a special field that should be directly overwritten without deep merge, 
+                // exception_code is a special field that should be directly overwritten without deep merge,
                 // to ensure error information is always up-to-date and not accidentally preserved from old status
                 if (key == "exception_code")
                 {

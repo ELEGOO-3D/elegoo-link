@@ -429,6 +429,12 @@ namespace elink
         bool cameraConnected = false; // Whether camera is connected
         bool canvasConnected = false; // Whether canvas is connected
     };
+
+    struct PrinterException{
+        std::string code;    // Exception code
+        int64_t timestamp;   // Exception timestamp
+    };
+
     // Printer status information
     struct PrinterStatusData : public PrinterEventData
     {
@@ -450,6 +456,8 @@ namespace elink
         CanvasStatus canvasStatus; // Canvas status information, optional,some printers may not support it
 
         ExternalDeviceStatus externalDeviceStatus; // External device status information, such as USB disk, SD card, camera, etc.
+
+        std::vector<PrinterException> exceptions; // Exception information list
         PrinterStatusData(const std::string &printerId = "")
             : PrinterEventData(printerId) {}
     };
