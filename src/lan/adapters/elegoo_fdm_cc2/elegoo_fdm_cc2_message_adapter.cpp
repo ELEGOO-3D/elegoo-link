@@ -1165,19 +1165,16 @@ namespace elink
             if (finalResult.contains("exception") && finalResult["exception"].is_object())
             {
                 auto exception = finalResult["exception"];
-                if (exception.contains("exception_code") && exception["excetion_code"].is_object())
+                if (exception.contains("exception_code") && exception["exception_code"].is_object())
                 {
-
                     auto exceptionCodesJson = exception["exception_code"];
-
                     for (auto &[codeStr, info] : exceptionCodesJson.items())
                     {
                         try
                         {
-                            int code = std::stoi(codeStr);
                             int64_t timestamp = JsonUtils::safeGetInt64(info, "time", 0);
                             PrinterException printerException;
-                            printerException.code = code;
+                            printerException.code = codeStr;
                             printerException.timestamp = timestamp;
                             finalStatus.exceptions.push_back(printerException);
                         }
