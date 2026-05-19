@@ -8,7 +8,7 @@
 #include "app_utils.h"
 #include "types/internal/internal.h"
 #include "utils/json_utils.h"
-#define APP_DEFAULT_REGION "cn"
+#define APP_DEFAULT_REGION "us"
 namespace elink
 {
     std::string HttpService::buildUrlPath(const std::string &path)
@@ -37,7 +37,8 @@ namespace elink
         {
             m_userAgent = userAgent;
             m_caCertPath = caCertPath;
-            // If region is empty, default to "cn"
+            m_region = region;
+            // If region is empty, default to "global"
             if (!region.empty())
             {
                 m_region = region;
@@ -143,7 +144,7 @@ namespace elink
         std::string regionUrl = params.baseUrl;
         std::string region = params.region;
 
-        // If region is empty, default to "cn"
+        // If region is empty, default to "global"
         if (region.empty())
         {
             region = APP_DEFAULT_REGION;
@@ -152,16 +153,17 @@ namespace elink
         // Only use default region URL when baseUrl is empty
         if (regionUrl.empty())
         {
-            std::transform(region.begin(), region.end(), region.begin(), ::tolower);
-            if (region == "china" || region == "cn")
-            {
-                regionUrl = ELEGOO_CHINA_IOT_URL;
-            }
-            else
-            {
-                regionUrl = ELEGOO_GLOBAL_IOT_URL;
-            }
+            // std::transform(region.begin(), region.end(), region.begin(), ::tolower);
+            // if (region == "china" || region == "cn")
+            // {
+            //     regionUrl = ELEGOO_CHINA_IOT_URL;
+            // }
+            // else
+            // {
+            //     regionUrl = ELEGOO_GLOBAL_IOT_URL;
+            // }
 
+            ELEGOO_LOG_WARN("Base URL is not provided, HTTP client will not be initialized. Please provide a valid base URL to initialize the HTTP client.");
             if (regionUrl.empty())
             {
                 return VoidResult::Error(ELINK_ERROR_CODE::INVALID_PARAMETER, "Region URL is not configured");
@@ -680,18 +682,19 @@ namespace elink
         {
             if (baseUrl.empty())
             {
-                std::string regionUrl;
-                std::string region = m_region;
-                std::transform(region.begin(), region.end(), region.begin(), ::tolower);
-                if (region == "china" || region == "cn")
-                {
-                    regionUrl = ELEGOO_CHINA_IOT_URL;
-                }
-                else
-                {
-                    regionUrl = ELEGOO_GLOBAL_IOT_URL;
-                }
-                baseUrl = regionUrl;
+                // std::string regionUrl;
+                // std::string region = m_region;
+                // std::transform(region.begin(), region.end(), region.begin(), ::tolower);
+                // if (region == "china" || region == "cn")
+                // {
+                //     regionUrl = ELEGOO_CHINA_IOT_URL;
+                // }
+                // else
+                // {
+                //     regionUrl = ELEGOO_GLOBAL_IOT_URL;
+                // }
+                // baseUrl = regionUrl;
+                // ELEGOO_LOG_WARN("Base URL is empty, cannot initialize HTTP client");
             }
 
             m_baseUrl = baseUrl;
@@ -703,7 +706,14 @@ namespace elink
             m_httpClient = std::make_shared<HttpClient>(baseUrl, httpConfig);
             m_httpClient->setBearerToken(m_credential.accessToken);
 
-            ELEGOO_LOG_INFO("HTTP client initialized with base URL: {}", baseUrl);
+            if (baseUrl.empty())
+            {
+                ELEGOO_LOG_WARN("HTTP client initialized without a base URL. Please provide a valid base URL to ensure proper functionality.");
+            }
+            else
+            {
+                ELEGOO_LOG_INFO("HTTP client initialized with base URL: {}", baseUrl);
+            }
             return VoidResult::Success();
         }
         catch (const std::exception &e)
