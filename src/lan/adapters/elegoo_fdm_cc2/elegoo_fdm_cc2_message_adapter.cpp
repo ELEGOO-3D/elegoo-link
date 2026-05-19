@@ -1185,6 +1185,12 @@ namespace elink
                     }
                 }
             }
+
+            if(finalResult.contains("device_assistant") && finalResult["device_assistant"].is_object())
+            {
+                auto deviceAssistant = finalResult["device_assistant"];
+                finalStatus.deviceAssistantStatus = JsonUtils::safeGetInt(deviceAssistant, "status", 0);
+            }
         }
 
         return std::optional<PrinterStatusData>(finalStatus);

@@ -458,6 +458,8 @@ namespace elink
         ExternalDeviceStatus externalDeviceStatus; // External device status information, such as USB disk, SD card, camera, etc.
 
         std::vector<PrinterException> exceptions; // Exception information list
+
+        int deviceAssistantStatus = 0; // Device assistant status, 0: closed, 1: open
         PrinterStatusData(const std::string &printerId = "")
             : PrinterEventData(printerId) {}
     };

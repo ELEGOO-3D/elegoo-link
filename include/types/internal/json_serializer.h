@@ -202,7 +202,7 @@ namespace elink
 
     NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PrinterStatusData,
                                                     printerId, printerStatus, printStatus, temperatureStatus, fanStatus,
-                                                    printAxesStatus, lightStatus, storageStatus, canvasStatus, externalDeviceStatus, exceptions)
+                                                    printAxesStatus, lightStatus, storageStatus, canvasStatus, externalDeviceStatus, exceptions, deviceAssistantStatus)
 
     NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(StartPrintParams,
                                                     printerId, storageLocation, fileName, autoBedLeveling, heatedBedType, enableTimeLapse, bedLevelForce, slotMap)
