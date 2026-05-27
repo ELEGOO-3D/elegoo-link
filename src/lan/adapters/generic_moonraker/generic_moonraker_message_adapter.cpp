@@ -9,6 +9,7 @@
 #include "types/internal/internal.h"
 #include "types/internal/json_serializer.h"
 #include "utils/json_utils.h"
+#include <cmath>
 namespace elink
 {
 
@@ -522,22 +523,27 @@ namespace elink
                 finalStatus.printerStatus.subState = PrinterSubState::NONE;
             }
             
-            if (finalResult.contains("display_status") && finalResult["display_status"].is_object())
+            const nlohmann::json *progressSource = nullptr;
+            if (finalResult.contains("virtual_sdcard") && finalResult["virtual_sdcard"].is_object())
             {
-                auto displayStatus = finalResult["display_status"];
-                double progress = JsonUtils::safeGetDouble(displayStatus, "progress", 0.0);
-                finalStatus.printerStatus.progress = (int)(progress * 100);
+                progressSource = &finalResult["virtual_sdcard"];
+            }
+            else if (finalResult.contains("display_status") && finalResult["display_status"].is_object())
+            {
+                progressSource = &finalResult["display_status"];
+            }
+
+            if (progressSource != nullptr)
+            {
+                const double progressRatio = std::clamp(JsonUtils::safeGetDouble(*progressSource, "progress", 0.0), 0.0, 1.0);
+                finalStatus.printerStatus.progress = static_cast<int>(std::lround(progressRatio * 100.0));
                 finalStatus.printerStatus.supportProgress = true;
                 finalStatus.printStatus.progress = finalStatus.printerStatus.progress;
-                if (progress > 0.0)
+                if (progressRatio > 0.0)
                 {
-                    finalStatus.printStatus.totalTime = static_cast<int>(finalStatus.printStatus.currentTime / progress);
+                    finalStatus.printStatus.totalTime = static_cast<int64_t>(std::llround(finalStatus.printStatus.currentTime / progressRatio));
                 }
-                finalStatus.printStatus.estimatedTime = finalStatus.printStatus.totalTime - finalStatus.printStatus.currentTime;
-                if (finalStatus.printStatus.estimatedTime < 0)
-                {
-                    finalStatus.printStatus.estimatedTime = 0;
-                }
+                finalStatus.printStatus.estimatedTime = std::max<int64_t>(0, finalStatus.printStatus.totalTime - finalStatus.printStatus.currentTime);
             }
 
             // if (finalResult.contains("pause_resume"))
