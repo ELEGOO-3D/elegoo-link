@@ -83,7 +83,9 @@ namespace elink
                     {"print_stats", nullptr},
                     {"heater_bed", nullptr},
                     {"pause_resume", nullptr},
-                    {"extruder", nullptr}};
+                    {"extruder", nullptr},
+                    {"virtual_sdcard", nullptr},
+                };
                 printerMessage["params"] = param;
                 break;
             }
