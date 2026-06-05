@@ -47,6 +47,8 @@ namespace elink
                     config.log.logMaxFileSize,
                     config.log.logMaxFiles});
 
+            ELEGOO_LOG_INFO("ElegooLink - Version: {}", ELEGOO_LINK_VERSION_STRING);
+            
             LanService::Config localConfig;
             localConfig.staticWebPath = config.local.staticWebPath;
 
@@ -329,7 +331,6 @@ namespace elink
         ELEGOO_LOG_INFO("Initializing ElegooLink SDK - Version: {}", ELEGOO_LINK_VERSION_STRING);
         bool wasInitialized = pImpl_->isInitialized();
         bool ok = pImpl_->initialize(config);
-
         // Setup event forwarding after initialization
         if (ok && !wasInitialized)
         {

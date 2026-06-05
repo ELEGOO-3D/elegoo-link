@@ -129,7 +129,7 @@ namespace elink
                 long sslOptions = 0L;
 #ifdef CURLSSLOPT_REVOKE_BEST_EFFORT
                 sslOptions |= CURLSSLOPT_REVOKE_BEST_EFFORT;
-                ELEGOO_LOG_INFO("Enabled Schannel revocation best-effort mode");
+                ELEGOO_LOG_DEBUG("Enabled Schannel revocation best-effort mode");
 #elif defined(CURLSSLOPT_NO_REVOKE)
                 sslOptions |= CURLSSLOPT_NO_REVOKE;
                 ELEGOO_LOG_WARN("Schannel revocation best-effort unsupported by libcurl; falling back to no-revoke mode");
