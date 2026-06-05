@@ -36,6 +36,7 @@ namespace elink
         int readTimeoutMs = 60000;                         // Read timeout in milliseconds
         int writeTimeoutMs = 30000;                        // Write timeout in milliseconds
         bool enableSSLVerification = true;                // Whether to enable SSL verification
+        bool allowSchannelRevocationFallback = true;      // On Windows Schannel, do not fail TLS only because revocation servers are unreachable
         std::string caCertPath;                           // CA certificate path (used when system CA is not available)
         std::string userAgent = "ElegooClient/1.0";        // User agent
         std::map<std::string, std::string> defaultHeaders; // Default request headers

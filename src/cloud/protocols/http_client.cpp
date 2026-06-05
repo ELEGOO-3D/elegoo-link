@@ -40,6 +40,7 @@ namespace elink
         HttpConfig config;
         std::atomic<bool> shouldStop{false};
         bool useSystemCA{false};
+        bool isSchannelBackend{false};
         std::string sslVersion;
 
         explicit Impl(const std::string &url) : baseUrl(url)
@@ -93,6 +94,7 @@ namespace elink
                         sslVersion.find("DarwinSSL") != std::string::npos)
                     {
                         useSystemCA = true;
+                        isSchannelBackend = sslVersion.find("Schannel") != std::string::npos;
                         ELEGOO_LOG_INFO("Using system CA certificates ({})", sslVersion);
                     }
                     else
@@ -116,6 +118,22 @@ namespace elink
             // Set SSL verification
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, config.enableSSLVerification ? 1L : 0L);
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, config.enableSSLVerification ? 2L : 0L);
+
+            if (config.enableSSLVerification && isSchannelBackend && config.allowSchannelRevocationFallback)
+            {
+                long sslOptions = 0L;
+#ifdef CURLSSLOPT_REVOKE_BEST_EFFORT
+                sslOptions |= CURLSSLOPT_REVOKE_BEST_EFFORT;
+                ELEGOO_LOG_INFO("Enabled Schannel revocation best-effort mode");
+#elif defined(CURLSSLOPT_NO_REVOKE)
+                sslOptions |= CURLSSLOPT_NO_REVOKE;
+                ELEGOO_LOG_WARN("Schannel revocation best-effort unsupported by libcurl; falling back to no-revoke mode");
+#endif
+                if (sslOptions != 0L)
+                {
+                    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, sslOptions);
+                }
+            }
 
             // Configure CA certificates based on initialization result
             if (config.enableSSLVerification)
