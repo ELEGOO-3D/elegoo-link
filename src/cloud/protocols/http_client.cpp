@@ -3,11 +3,16 @@
 #include "utils/utils.h"
 
 #include <curl/curl.h>
+#include <array>
 #include <regex>
 #include <fstream>
 #include <atomic>
 #include <vector>
 #include <sstream>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace elink
 {
@@ -278,6 +283,10 @@ namespace elink
 
             HttpResponse response;
             std::string responseBody;
+            std::array<char, CURL_ERROR_SIZE> errorBuffer{};
+
+            errorBuffer.fill('\0');
+            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer.data());
 
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
@@ -299,7 +308,9 @@ namespace elink
 
             if (res != CURLE_OK)
             {
-                std::string errorMsg = curl_easy_strerror(res);
+                std::string errorMsg = errorBuffer[0] != '\0'
+                                           ? std::string(errorBuffer.data())
+                                           : std::string(curl_easy_strerror(res));
                 curl_easy_cleanup(curl);
 
                 ELEGOO_LOG_ERROR("HTTP request failed: {}", errorMsg);
@@ -600,6 +611,10 @@ namespace elink
                 return BizResult<HttpResponse>::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "Failed to initialize curl");
             }
 
+            std::array<char, CURL_ERROR_SIZE> errorBuffer{};
+            errorBuffer.fill('\0');
+            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer.data());
+
             // Apply custom timeout if provided, otherwise use low-speed timeout for large data uploads
             if (timeout.has_value())
             {
@@ -685,7 +700,9 @@ namespace elink
 
             if (res != CURLE_OK)
             {
-                std::string errorMsg = curl_easy_strerror(res);
+                std::string errorMsg = errorBuffer[0] != '\0'
+                                           ? std::string(errorBuffer.data())
+                                           : std::string(curl_easy_strerror(res));
                 curl_easy_cleanup(curl);
 
                 ELEGOO_LOG_ERROR("PUT binary request failed: {}", errorMsg);
@@ -929,6 +946,10 @@ namespace elink
                 return BizResult<HttpResponse>::Error(ELINK_ERROR_CODE::NETWORK_ERROR, "Failed to initialize curl");
             }
 
+            std::array<char, CURL_ERROR_SIZE> errorBuffer{};
+            errorBuffer.fill('\0');
+            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer.data());
+
             // For file upload, use low-speed timeout instead of total timeout
             // This allows large file uploads to complete without time limit,
             // while still detecting stalled connections
@@ -1050,7 +1071,9 @@ namespace elink
 
             if (res != CURLE_OK)
             {
-                std::string errorMsg = curl_easy_strerror(res);
+                std::string errorMsg = errorBuffer[0] != '\0'
+                                           ? std::string(errorBuffer.data())
+                                           : std::string(curl_easy_strerror(res));
                 curl_easy_cleanup(curl);
 
                 ELEGOO_LOG_ERROR("File upload failed: {}", errorMsg);
