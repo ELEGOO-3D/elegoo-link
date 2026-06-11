@@ -538,12 +538,12 @@ namespace elink
             if (progressSource != nullptr)
             {
                 const double progressRatio = std::clamp(JsonUtils::safeGetDouble(*progressSource, "progress", 0.0), 0.0, 1.0);
-                finalStatus.printerStatus.progress = static_cast<int>(std::lround(progressRatio * 100.0));
+                finalStatus.printerStatus.progress = static_cast<int>(progressRatio * 100.0);
                 finalStatus.printerStatus.supportProgress = true;
                 finalStatus.printStatus.progress = finalStatus.printerStatus.progress;
                 if (progressRatio > 0.0)
                 {
-                    finalStatus.printStatus.totalTime = static_cast<int64_t>(std::llround(finalStatus.printStatus.currentTime / progressRatio));
+                    finalStatus.printStatus.totalTime = static_cast<int64_t>(finalStatus.printStatus.currentTime / progressRatio);
                 }
                 finalStatus.printStatus.estimatedTime = std::max<int64_t>(0, finalStatus.printStatus.totalTime - finalStatus.printStatus.currentTime);
             }
