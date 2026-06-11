@@ -526,15 +526,18 @@ namespace elink
             }
             
             const nlohmann::json *progressSource = nullptr;
-            if (finalResult.contains("virtual_sdcard") && finalResult["virtual_sdcard"].is_object())
-            {
-                progressSource = &finalResult["virtual_sdcard"];
-            }
-            else if (finalResult.contains("display_status") && finalResult["display_status"].is_object())
-            {
-                progressSource = &finalResult["display_status"];
-            }
+            // if (finalResult.contains("virtual_sdcard") && finalResult["virtual_sdcard"].is_object())
+            // {
+            //     progressSource = &finalResult["virtual_sdcard"];
+            // }
+            // else if (finalResult.contains("display_status") && finalResult["display_status"].is_object())
+            // {
+            //     progressSource = &finalResult["display_status"];
+            // }
 
+            // For now, use the "progress" field in "display_status" as the source of print progress. 
+            // In the future, we may need to read machine configuration to determine the source of progress.
+            progressSource = &finalResult["display_status"];
             if (progressSource != nullptr)
             {
                 const double progressRatio = std::clamp(JsonUtils::safeGetDouble(*progressSource, "progress", 0.0), 0.0, 1.0);
