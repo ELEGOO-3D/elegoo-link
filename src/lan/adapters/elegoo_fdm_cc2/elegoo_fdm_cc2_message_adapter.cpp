@@ -658,6 +658,8 @@ namespace elink
                         finalStatus.printerStatus.subState = PrinterSubState::NONE;
                         break;
                     case 1081:
+                    case 1082:
+                    case 1086:
                         finalStatus.printerStatus.subState = PrinterSubState::P_DOWNLOADING_FILE;
                         break;
                     case 1045:
@@ -985,6 +987,7 @@ namespace elink
                         finalStatus.printStatus.totalTime = 0;
                         finalStatus.printStatus.currentTime = 0;
                         finalStatus.printStatus.estimatedTime = 0;
+                        finalStatus.printerStatus.progress = 0;
                     }
                     else
                     {
