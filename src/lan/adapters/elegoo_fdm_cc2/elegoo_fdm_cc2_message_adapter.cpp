@@ -657,6 +657,9 @@ namespace elink
                     case 0:
                         finalStatus.printerStatus.subState = PrinterSubState::NONE;
                         break;
+                    case 1081:
+                        finalStatus.printerStatus.subState = PrinterSubState::P_DOWNLOADING_FILE;
+                        break;
                     case 1045:
                         finalStatus.printerStatus.subState = PrinterSubState::P_EXTRUDER_PREHEATING;
                         break;
@@ -969,13 +972,24 @@ namespace elink
                 {
                     auto printStatus = finalResult["print_status"];
                     finalStatus.printStatus.fileName = JsonUtils::safeGet(printStatus, "filename", std::string());
-                    finalStatus.printStatus.totalTime = JsonUtils::safeGet(printStatus, "total_duration", 0);
-                    finalStatus.printStatus.currentTime = JsonUtils::safeGet(printStatus, "print_duration", 0);
-                    finalStatus.printStatus.totalLayer = JsonUtils::safeGet(printStatus, "total_layer", 0);
-                    finalStatus.printStatus.estimatedTime = JsonUtils::safeGet(printStatus, "remaining_time_sec", 0);
-                    finalStatus.printStatus.currentLayer = JsonUtils::safeGet(printStatus, "current_layer", 0);
+                    finalStatus.printStatus.totalTime = JsonUtils::safeGetInt64(printStatus, "total_duration", 0);
+                    finalStatus.printStatus.currentTime = JsonUtils::safeGetInt64(printStatus, "print_duration", 0);
+                    finalStatus.printStatus.totalLayer = JsonUtils::safeGetInt(printStatus, "total_layer", 0);
+                    finalStatus.printStatus.estimatedTime = JsonUtils::safeGetInt64(printStatus, "remaining_time_sec", 0);
+                    finalStatus.printStatus.currentLayer = JsonUtils::safeGetInt(printStatus, "current_layer", 0);
                     // finalStatus.printStatus.progress = (int)(JsonUtils::safeGet(printStatus, "progress", 0.0f) * 100);
-                    finalStatus.printStatus.progress = finalStatus.printerStatus.progress;
+                    if (finalStatus.printerStatus.subState == PrinterSubState::P_DOWNLOADING_FILE)
+                    {
+                        // During cloud slicing download, do not display progress and time information to avoid misleading users into thinking it's print progress
+                        finalStatus.printStatus.progress = 0;
+                        finalStatus.printStatus.totalTime = 0;
+                        finalStatus.printStatus.currentTime = 0;
+                        finalStatus.printStatus.estimatedTime = 0;
+                    }
+                    else
+                    {
+                        finalStatus.printStatus.progress = finalStatus.printerStatus.progress;
+                    }
                 }
             }
             else

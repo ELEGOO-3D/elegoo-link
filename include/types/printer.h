@@ -260,6 +260,7 @@ namespace elink
         P_AUTO_LEVELING = 124,         // Auto-leveling
         P_LOADING_FILAMENT = 125,      // Loading filament
         P_UNLOADING_FILAMENT = 126,    // Unloading filament
+        P_DOWNLOADING_FILE = 127,        // Downloading file
 
         FO_FILAMENT_LOADING = 201,       // Filament loading in progress
         FO_FILAMENT_LOADING_COMPLETED,   // Filament loading completed
