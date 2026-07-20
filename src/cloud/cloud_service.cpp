@@ -347,7 +347,8 @@ namespace elink
                 // Check if the new credential matches the cached credential
                 if (m_cachedHttpCredential.userId == credential.userId &&
                     m_cachedHttpCredential.accessToken == credential.accessToken &&
-                    m_cachedHttpCredential.refreshToken == credential.refreshToken)
+                    m_cachedHttpCredential.refreshToken == credential.refreshToken &&
+                    (!m_rtmService || !m_rtmService->isLoginOtherDevice()))
                 {
                     return VoidResult::Success();
                 }
@@ -420,6 +421,17 @@ namespace elink
             return BizResult<HttpCredential>::Error(ELINK_ERROR_CODE::NOT_INITIALIZED, "HTTP service not initialized");
         }
 
+        // A same-UID RTM login means this session has been superseded elsewhere.
+        // Do not let token refresh silently revive it; only explicitly setting the
+        // HTTP credential is allowed to clear the RTM login-from-other-device state.
+        if (m_rtmService && m_rtmService->isLoginOtherDevice())
+        {
+            ELEGOO_LOG_WARN("HTTP token refresh rejected because the current user is logged in on another device");
+            return BizResult<HttpCredential>::Error(
+                ELINK_ERROR_CODE::SERVER_UNAUTHORIZED,
+                "Token refresh is not allowed after login from another device; call setHttpCredential first");
+        }
+
         // Check if the credential already exists in the history
         {
             std::shared_lock<std::shared_mutex> credentialsLock(m_credentialsMutex);
@@ -449,12 +461,6 @@ namespace elink
             {
                 std::lock_guard<std::shared_mutex> credentialsLock(m_credentialsMutex);
                 m_credentialHistory.push_back(credential);
-            }
-
-            // Clear login from other device state to allow reconnection with refreshed credentials
-            if (m_rtmService)
-            {
-                m_rtmService->clearLoginOtherDeviceState();
             }
 
             if (!credential.accessToken.empty() && !m_backgroundTasksRunning.load())
