@@ -16,6 +16,7 @@
 #include "services/rtm_service.h"
 #include "adapters/elegoo_fdm_cc2_message_adapter.h"
 #include <map>
+#include <algorithm>
 
 namespace elink
 {

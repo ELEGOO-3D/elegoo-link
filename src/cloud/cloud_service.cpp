@@ -6,6 +6,7 @@
 #include "types/internal/json_serializer.h"
 #include "adapters/elegoo_fdm_cc2_message_adapter.h"
 #include <future>
+#include <algorithm>
 
 // Macro to validate printer ID and RTM service state
 #define VALIDATE_PRINTER_AND_RTM_SERVICE(ReturnType)                                                      \

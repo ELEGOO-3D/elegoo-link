@@ -7,6 +7,7 @@
 #include <typeindex>
 #include <string>
 #include <mutex>
+#include <algorithm>
 
 namespace elink 
 {

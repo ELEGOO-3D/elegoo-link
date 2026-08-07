@@ -8,6 +8,7 @@
 #include "app_utils.h"
 #include "types/internal/internal.h"
 #include "utils/json_utils.h"
+#include <algorithm>
 #define APP_DEFAULT_REGION "us"
 namespace elink
 {
