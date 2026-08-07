@@ -16,6 +16,7 @@
 #include "utils/process_mutex.h"
 #include "utils/logger.h"
 #include <map>
+#include <algorithm>
 
 namespace elink
 {

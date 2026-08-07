@@ -5,6 +5,7 @@
 #include "types/internal/internal.h"
 #include "types/internal/json_serializer.h"
 #include "utils/json_utils.h"
+#include <algorithm>
 
 namespace
 {
